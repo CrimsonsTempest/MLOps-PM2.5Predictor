@@ -7,9 +7,12 @@ numpy==2.5.3
 scikit-learn==1.9.1    # Mencakup RandomForestRegressor, evaluasi metrik, dll.
 scipy==1.18.1
 joblib==1.6.0          # Untuk menyimpan (serialize) model Random Forest
+polars==1.44.2
 
 # Workflow Orchestration
 apache-airflow==2.10.0 # Sesuai kebutuhan orkestrasi
 
 # Utilitas Pendukung
 PyYAML==6.0.3
+python-dotenv==1.2.3
+
