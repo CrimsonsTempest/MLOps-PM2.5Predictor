@@ -1,0 +1,15 @@
+# Core Data Processing & API
+requests==2.34.2
+pandas==3.0.5
+numpy==2.5.3
+
+# Machine Learning & Modeling
+scikit-learn==1.9.1    # Mencakup RandomForestRegressor, evaluasi metrik, dll.
+scipy==1.18.1
+joblib==1.6.0          # Untuk menyimpan (serialize) model Random Forest
+
+# Workflow Orchestration
+apache-airflow==2.10.0 # Sesuai kebutuhan orkestrasi
+
+# Utilitas Pendukung
+PyYAML==6.0.3
