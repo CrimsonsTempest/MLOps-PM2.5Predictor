@@ -220,3 +220,5 @@ __marimo__/
 
 #data folder
 data/raw
+data/processed
+data/preprocessed

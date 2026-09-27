@@ -32,11 +32,11 @@ Dependencies:
     pip install "polars>=1.0" "requests>=2.31" "python-dotenv>=1.0"
 
 Examples:
-    python ingestion.py                        # incremental, full history on cold start
-    python ingestion.py --days 90              # bound a cold start to the last 90 days
-    python ingestion.py --overlap-minutes 180
-    python ingestion.py --force-full --dry-run
-    python ingestion.py --log-level DEBUG
+    python src/data/ingest_data.py                   # incremental, full history on cold start
+    python src/data/ingest_data.py --days 90         # bound a cold start to the last 90 days
+    python src/data/ingest_data.py --overlap-minutes 180
+    python src/data/ingest_data.py --force-full --dry-run
+    python src/data/ingest_data.py --log-level DEBUG
 """
 
 from __future__ import annotations
