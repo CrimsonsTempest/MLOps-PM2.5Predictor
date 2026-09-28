@@ -1,0 +1,121 @@
+{
+  "generated_at_utc": "2026-09-27T16:34:24Z",
+  "source_file": "cleandata_20260927_163413.csv",
+  "source_path": "/workspaces/MLOps-PM2.5Predictor/data/preprocessed/cleandata_20260927_163413.csv",
+  "output_file": "openaq_ml_ready.csv",
+  "rows": {
+    "raw_rows": 35490,
+    "cleaned_rows": 35490,
+    "pivot_rows": 7098,
+    "parameters": 5,
+    "grid_rows": 7295,
+    "grid_rows_inserted": 197,
+    "rows_complete_features": 6908,
+    "published_rows": 2000
+  },
+  "coverage": {
+    "first_hour_utc": "2025-11-27T15:00:00Z",
+    "last_hour_utc": "2026-09-27T13:00:00Z",
+    "expected_hours": 7295,
+    "recorded_hours": 7098,
+    "missing_hours": 197,
+    "availability_pct": 97.3,
+    "offline_threshold_minutes": 70,
+    "offline_periods": 27,
+    "longest_offline_period": {
+      "ending_utc": "2026-01-26T07:00:00Z",
+      "hours": 103.0
+    },
+    "top_offline_periods": [
+      {
+        "ending_utc": "2026-01-26T07:00:00Z",
+        "hours": 103.0
+      },
+      {
+        "ending_utc": "2025-12-03T06:00:00Z",
+        "hours": 25.0
+      },
+      {
+        "ending_utc": "2026-07-20T18:00:00Z",
+        "hours": 14.0
+      },
+      {
+        "ending_utc": "2026-09-09T00:00:00Z",
+        "hours": 11.0
+      },
+      {
+        "ending_utc": "2026-08-03T08:00:00Z",
+        "hours": 9.0
+      }
+    ]
+  },
+  "unit_conflicts": {},
+  "output_columns": [
+    "datetime_local",
+    "pm25",
+    "pm1",
+    "um003",
+    "relativehumidity",
+    "temperature",
+    "hour",
+    "hour_sin",
+    "hour_cos",
+    "pm25_lag_1",
+    "pm25_lag_2",
+    "pm25_lag_3",
+    "rh_lag_1",
+    "rh_lag_2",
+    "rh_lag_3",
+    "temp_lag_1",
+    "temp_lag_2",
+    "temp_lag_3",
+    "pm25_rolling_std_6h",
+    "velocity_1h",
+    "velocity_now",
+    "target_delta"
+  ],
+  "target": "target_delta",
+  "target_horizon_hours": 1,
+  "features": [
+    "pm25",
+    "relativehumidity",
+    "temperature",
+    "hour_sin",
+    "hour_cos",
+    "pm25_lag_1",
+    "pm25_lag_2",
+    "pm25_lag_3",
+    "rh_lag_1",
+    "rh_lag_2",
+    "rh_lag_3",
+    "temp_lag_1",
+    "temp_lag_2",
+    "temp_lag_3",
+    "pm25_rolling_std_6h",
+    "velocity_1h",
+    "velocity_now"
+  ],
+  "non_predictors": [
+    "hour",
+    "hour_sin",
+    "hour_cos",
+    "target_delta",
+    "datetime_local",
+    "pm1",
+    "um003"
+  ],
+  "settings": {
+    "input_path": "/workspaces/MLOps-PM2.5Predictor/data/preprocessed/cleandata_20260927_163413.csv",
+    "output_path": "/workspaces/MLOps-PM2.5Predictor/data/processed/openaq_ml_ready.csv",
+    "rows_limit": 2000,
+    "max_gap_hours": 0,
+    "local_hour": false,
+    "split_ratio": null,
+    "dropna_all": false,
+    "dry_run": false
+  },
+  "library_versions": {
+    "pandas": "3.0.5",
+    "numpy": "2.5.3"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "generated_at_utc": "2026-09-27T16:40:13Z",
+  "source_file": "rawdata_20260927_143110.csv",
+  "source_path": "/workspaces/MLOps-PM2.5Predictor/data/raw/rawdata_20260927_143110.csv",
+  "output_file": "cleandata_20260927_164012.csv",
+  "rows": {
+    "raw_rows": 35490,
+    "bad_timestamp": 0,
+    "blank_parameter": 0,
+    "bad_value": 0,
+    "duplicates": 0,
+    "cleaned_rows": 35490,
+    "published_rows": 35490
+  },
+  "first_hour_utc": "2025-11-27T15:00:00Z",
+  "last_hour_utc": "2026-09-27T13:00:00Z",
+  "parameters": [
+    "pm1",
+    "pm25",
+    "relativehumidity",
+    "temperature",
+    "um003"
+  ],
+  "unit_conflicts": {},
+  "output_columns": [
+    "sensor_id",
+    "parameter",
+    "units",
+    "datetime_utc",
+    "datetime_local",
+    "value",
+    "ingested_at_utc",
+    "preprocessed_at_utc"
+  ],
+  "settings": {
+    "input_path": "/workspaces/MLOps-PM2.5Predictor/data/raw/rawdata_20260927_143110.csv",
+    "output_path": "/workspaces/MLOps-PM2.5Predictor/data/preprocessed/cleandata_20260927_164012.csv",
+    "dry_run": false
+  },
+  "library_versions": {
+    "pandas": "3.0.5"
+  }
+}
