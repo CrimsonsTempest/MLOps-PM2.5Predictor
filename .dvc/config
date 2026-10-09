@@ -1,0 +1,6 @@
+[core]
+    remote = r2storage
+['remote "r2storage"']
+    url = s3://mlops-pm25-dvc/dvc
+    endpointurl = https://953fe814c76ca97d3f53e0485bc90c08.r2.cloudflarestorage.com
+    region = auto
