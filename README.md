@@ -38,7 +38,7 @@ Berikut adalah flow dari system yang akan dibuat
 └── README.md
 ```
 
-## ▶ Menjalankan Pipeline Data
+##  Menjalankan Pipeline Data
 
 ```bash
 # 1. Ingestion: tarik data mentah dari OpenAQ (butuh API_KEY di .env)
@@ -53,14 +53,14 @@ python src/data/preprocess.py --dry-run
 
 ## DVC
 
-# 1. Set Up DVC Remote
+### 1. Set Up DVC Remote
 
-## a. Tambah remote storage
+ a. Tambah remote storage
 ```
 dvc remote add -d <remote-name> s3://<bucket-name>
 ```
 
-## b. Set endpoint & kredensial lokal
+b. Set endpoint & kredensial lokal
 
 ```bash
 dvc remote modify <remote-name> endpointurl <ENDPOINT_URL>
@@ -68,7 +68,8 @@ dvc remote modify --local <remote-name> access_key_id <ACCESS_KEY_ID>
 dvc remote modify --local <remote-name> secret_access_key <SECRET_ACCESS_KEY>
 ```
 
-# 2. Data Version Tracking 
+### 2. Data Version Tracking 
+
 Karena ingestion memberikan timestamp otomatis , dan dvc membutuhkan 1 nama file konstan, ubah versi yang ingin di version menjadi dataset.csv , lalu
 
 ```bash
@@ -79,7 +80,7 @@ git tag v<TIMESTAMP>
 git push && git push --tags
 ```
 
-# 3. Data Version Switching
+### 3. Data Version Switching
 
 ```bash
 git tag --list                              # untuk melihat versi apa saja yang terdaftar 
