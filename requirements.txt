@@ -3,6 +3,9 @@ requests==2.34.2
 pandas==3.0.5
 numpy==2.5.3
 
+# Data Version Control
+dvc==3.67.1
+
 # Machine Learning & Modeling
 scikit-learn==1.9.1    # Mencakup RandomForestRegressor, evaluasi metrik, dll.
 scipy==1.18.1
