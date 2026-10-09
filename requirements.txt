@@ -5,7 +5,7 @@ numpy==2.5.3
 
 # Data Version Control
 dvc==3.67.1
-
+dvc-s3==3.3.0
 # Machine Learning & Modeling
 scikit-learn==1.9.1    # Mencakup RandomForestRegressor, evaluasi metrik, dll.
 scipy==1.18.1
