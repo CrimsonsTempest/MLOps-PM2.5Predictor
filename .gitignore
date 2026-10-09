@@ -218,13 +218,3 @@ __marimo__/
 .streamlit/secrets.toml
 
 
-#data folder
-data/raw/*
-data/processed/*
-data/preprocessed/*
-
-# Whitelist .dvc pointer files and local .gitignore files
-!data/raw/*.dvc
-!data/processed/*.dvc
-!data/preprocessed/*.dvc
-!data/**/.gitignore
