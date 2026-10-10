@@ -53,6 +53,9 @@ python src/data/preprocess.py --dry-run
 
 ## DVC
 
+DVC berguna untuk melakukan tracking pada versi data yang digunakan untuk membuat sebuah model. secara konsekuen ini membantu reproducibility pembuatan dari suatu model yang sudah ada karena data adalah penentu utama hasil kualitas dari model. sehingga dengan memiliki data yang digunakan sebelumnya untuk membuat model, dapat dilakukan cleaning, engineering, dan training ulang.
+
+
 ### 1. Set Up DVC Remote
 
  a. Tambah remote storage
@@ -70,9 +73,10 @@ dvc remote modify --local <remote-name> secret_access_key <SECRET_ACCESS_KEY>
 
 ### 2. Data Version Tracking 
 
-Karena ingestion memberikan timestamp otomatis , dan dvc membutuhkan 1 nama file konstan, ubah versi yang ingin di version menjadi dataset.csv , lalu
+Karena ingestion memberikan timestamp otomatis , dan dvc membutuhkan 1 nama file konstan, pertama masukan/copy isi data yang ingin di version ke dataset.csv , lalu track.
 
 ```bash
+cp data/raw/rawdata_<TIMESTAMP>.csv data/raw/dataset.csv
 dvc add data/raw/dataset.csv
 git add data/raw/dataset.csv.dvc
 git commit -m "Track dataset version <TIMESTAMP>"
