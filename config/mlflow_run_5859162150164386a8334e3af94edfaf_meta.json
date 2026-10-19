@@ -1,0 +1,58 @@
+{
+  "run_info": {
+    "run_uuid": "5859162150164386a8334e3af94edfaf",
+    "name": "caring-ray-369",
+    "source_type": "UNKNOWN",
+    "source_name": "",
+    "entry_point_name": "",
+    "user_id": "vscode",
+    "status": "FINISHED",
+    "start_time": 1792418430746,
+    "end_time": 1792418439209,
+    "source_version": "",
+    "lifecycle_stage": "active",
+    "artifact_uri": "/workspaces/MLOps-PM2.5Predictor/mlruns/1/5859162150164386a8334e3af94edfaf/artifacts",
+    "experiment_id": 1,
+    "deleted_time": null
+  },
+  "params": {
+    "source_file": "processed_data.csv",
+    "n_rows": "6537",
+    "n_features": "22",
+    "n_targets": "24",
+    "horizon": "24",
+    "train_frac": "0.7",
+    "val_frac": "0.15",
+    "seed": "42",
+    "n_estimators": "550",
+    "max_depth": "6",
+    "learning_rate": "0.011028572959953072",
+    "subsample": "0.6217032863441752",
+    "colsample_bytree": "0.7952528947351842",
+    "min_child_weight": "1",
+    "reg_lambda": "8.850498864953952",
+    "random_state": "42",
+    "n_jobs": "-1",
+    "tree_method": "hist"
+  },
+  "metrics": {
+    "train_mae": 9.594508603899476,
+    "train_rmse": 14.017513333482558,
+    "train_r2": 0.7097983072750921,
+    "val_mae": 16.065521606253526,
+    "val_rmse": 23.3047633230214,
+    "val_r2": 0.4777880549606679,
+    "test_mae": 13.88447299721271,
+    "test_rmse": 19.366843515505447,
+    "test_r2": 0.4515184083668136
+  },
+  "tags": {
+    "mlflow.user": "vscode",
+    "mlflow.source.name": "src/train/train.py",
+    "mlflow.source.type": "LOCAL",
+    "mlflow.source.git.commit": "a9dea9453b591d5bd41f3abe28f7f6522ed5f6a9",
+    "mlflow.source.git.branch": "feat/Feature-Engineering-and-Model-Training",
+    "mlflow.source.git.repoURL": "https://github.com/CrimsonsTempest/MLOps-PM2.5Predictor",
+    "mlflow.runName": "caring-ray-369"
+  }
+}
