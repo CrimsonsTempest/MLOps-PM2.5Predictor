@@ -23,18 +23,29 @@ Berikut adalah flow dari system yang akan dibuat
 ## Struktur Direktori
 ```text
 .
-├── .dvc/
-├── config/
+├── .devcontainer/          # konfigurasi development container
+├── .dvc/                   # konfigurasi DVC
+├── .github/                # konfigurasi GitHub
+├── config/                 # metadata run MLflow
 ├── data/
-│   ├── raw/              # rawdata_*.csv dari ingestion (append-only, versioned)
-│   │   └── dataset.csv.dvc   # pointer DVC ke dataset aktif
-│   └── preprocessed/     # cleandata_*.csv dari preprocessing (versioned)
-├── models/
-├── notebooks/
+│   ├── raw/                # data mentah hasil ingestion dan pointer DVC
+│   ├── preprocessed/       # data bersih dan metadata preprocessing
+│   └── processed/          # data hasil feature engineering dan pointer DVC
+├── mlflow.db               # backend store lokal MLflow
+├── mlruns/                 # run, artefak, dan model MLflow
+├── models/                 # model final, parameter, dan metadata fitur
+├── notebooks/              # notebook eksplorasi
 ├── src/
-│   └── data/
-│       ├── ingest_data.py  # fetch data mentah dari OpenAQ API
-│       └── preprocess.py   # cleaning: timestamp, missing values, deduplikasi
+│   ├── data/
+│   │   ├── ingest_data.py  # mengambil data mentah dari OpenAQ API
+│   │   └── preprocess.py   # membersihkan dan menyiapkan data
+│   ├── feature/
+│   │   └── feature_engineer.py # membuat fitur untuk training
+│   ├── mlflow-meta/
+│   │   └── extract_mlflow_run.py # mengekstrak metadata run MLflow
+│   └── train/
+│       └── train.py        # melatih dan mengevaluasi model
+├── requirements.txt        # dependensi Python
 └── README.md
 ```
 
@@ -47,8 +58,15 @@ python src/data/ingest_data.py
 # 2. Preprocessing: bersihkan snapshot mentah terbaru
 python src/data/preprocess.py
 
-# Cek dulu tanpa menulis file:
-python src/data/preprocess.py --dry-run
+# 3. Feature Engineering : susun fitur yang akan digunakan untuk model training
+python src/feature/feature_engineer.py
+
+# 4. Model Training : melatih model berdasarkan data hasil feature engineering
+python src/train/train.py
+
+## melakukan cek hasil pembuatan model
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+#buka localhost:5000
 ```
 
 ## DVC
