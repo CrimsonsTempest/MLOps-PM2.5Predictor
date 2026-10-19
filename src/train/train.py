@@ -411,7 +411,7 @@ def run(cfg: Config) -> int:
         write_csv_atomic(pd.DataFrame(importance, columns=["feature", "importance"]), fi_path)
         LOG.info("published feature importance -> %s", fi_path)
         if run_id is not None and _MLFLOW_AVAILABLE:
-            mlflow.log_artifact(str(fi_path), artifact_path="feature_importance")
+            mlflow.log_artifact(str(fi_path), artifact_path="feature_importance",run_id=run_id)
 
     meta_path = cfg.output_dir / (cfg.model_name.removesuffix(".joblib") + "_meta.json")
     model_meta = {
