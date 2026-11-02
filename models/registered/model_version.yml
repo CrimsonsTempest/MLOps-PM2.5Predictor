@@ -1,0 +1,51 @@
+model_name: xgboost_24compact
+mlflow_tracking_uri: sqlite:////workspaces/MLOps-PM2.5Predictor/mlflow.db
+inference_uri: models:/xgboost_24compact/Production
+model_flavor: sklearn/skops
+versions:
+- version: 1
+  stage: READY
+  run_id: a7fd25dcba614697ba700e1e00ae8c20
+  model_id: m-3b5e7753086345648694d82c206665b1
+  artifact_uri: /workspaces/MLOps-PM2.5Predictor/mlruns/1/models/m-3b5e7753086345648694d82c206665b1/artifacts
+  exported_dir: models/registered/xgboost_24compact/v1
+  dvc_file: models/registered/xgboost_24compact/v1.dvc
+  exported_at: '2026-11-02T17:56:02.640859+00:00'
+  metrics:
+    run_uuid: a7fd25dcba614697ba700e1e00ae8c20
+    name: efficient-tern-184
+    source_type: UNKNOWN
+    source_name: ''
+    entry_point_name: ''
+    user_id: vscode
+    status: FINISHED
+    start_time: 1793538429447
+    end_time: 1793538438354
+    source_version: ''
+    lifecycle_stage: active
+    artifact_uri: /workspaces/MLOps-PM2.5Predictor/mlruns/1/a7fd25dcba614697ba700e1e00ae8c20/artifacts
+    experiment_id: 1
+    deleted_time: null
+- version: 2
+  stage: READY
+  run_id: 93c966cea7b24b17b943ce1313ae92e6
+  model_id: m-c0fbaede6c5d49b29ce7d3baf815d30f
+  artifact_uri: /workspaces/MLOps-PM2.5Predictor/mlruns/1/models/m-c0fbaede6c5d49b29ce7d3baf815d30f/artifacts
+  exported_dir: models/registered/xgboost_24compact/v2
+  dvc_file: models/registered/xgboost_24compact/v2.dvc
+  exported_at: '2026-11-02T17:56:02.740004+00:00'
+  metrics:
+    run_uuid: 93c966cea7b24b17b943ce1313ae92e6
+    name: enchanting-owl-926
+    source_type: UNKNOWN
+    source_name: ''
+    entry_point_name: ''
+    user_id: vscode
+    status: FINISHED
+    start_time: 1793539899012
+    end_time: 1793539912836
+    source_version: ''
+    lifecycle_stage: active
+    artifact_uri: /workspaces/MLOps-PM2.5Predictor/mlruns/1/93c966cea7b24b17b943ce1313ae92e6/artifacts
+    experiment_id: 1
+    deleted_time: null

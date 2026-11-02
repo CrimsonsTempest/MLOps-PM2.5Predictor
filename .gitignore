@@ -209,6 +209,10 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# MLflow internal tracking store - bukan untuk version control Git
+mlflow.db
+mlruns/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
