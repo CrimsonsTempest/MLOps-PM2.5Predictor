@@ -5,9 +5,9 @@ Expected layout in the target repo:
     <root>/.env
     <root>/data/processed/processed_data.csv                (published by src/feature/feature_engineer.py)
     <root>/data/processed/processed_data_meta.json          (feature/target lists for training)
-    <root>/models/xgb_lag24_final.joblib                    (published by this script)
-    <root>/models/xgb_lag24_final_meta.json                 (model metadata for serving)
-    <root>/models/xgb_lag24_best_params.json                (optional tuned hyperparameters)
+    <root>/models/model.joblib                    (published by this script)
+    <root>/models/model_meta.json                 (model metadata for serving)
+    <root>/config/model_default_param.json                (optional tuned hyperparameters)
     <root>/mlflow.db                                        (MLflow SQLite tracking store, default)
 
 Trains ONE XGBoost model (MultiOutputRegressor wrapping XGBRegressor) that predicts all
@@ -34,8 +34,8 @@ Arguments:
     --input                 feature CSV (default: <root>/data/processed/processed_data.csv)
     --meta                  feature meta JSON (default: <root>/data/processed/processed_data_meta.json)
     --output-dir            model output directory (default: <root>/models)
-    --model-name            model artifact file name (default: xgb_lag24_final.joblib)
-    --params                JSON file with tuned XGB hyperparameters (default: <root>/models/xgb_lag24_best_params.json)
+    --model-name            model artifact file name (default: model.joblib)
+    --params                JSON file with tuned XGB hyperparameters (default: <root>/config/model_default_param.json)
     --params-key            top-level key inside --params to use (default: limited)
     --train-frac            fraction of rows used for training (default: 0.70)
     --val-frac              fraction of rows used for validation (default: 0.15; test gets the remainder)
@@ -66,8 +66,8 @@ MLflow UI run :
 
 Other Examples:
     python src/train/train.py
-    python src/train/train.py --experiment-name pm25-lag24-v2 --n-estimators 500 --max-depth 6
-    python src/train/train.py --register-model-name pm25-lag24-xgb --dry-run
+    python src/train/train.py --experiment-name model-v2 --n-estimators 500 --max-depth 6
+    python src/train/train.py --register-model-name model-xgb --dry-run
     python src/train/train.py --no-mlflow
 """
 
@@ -103,8 +103,8 @@ SNAPSHOT_META = "processed_data_meta.json"
 DEFAULT_INPUT = ("data", "processed", SNAPSHOT_FEATURES)
 DEFAULT_META = ("data", "processed", SNAPSHOT_META)
 DEFAULT_OUTPUT_DIR = "models"
-DEFAULT_MODEL_NAME = "xgb_lag24_final.joblib"
-DEFAULT_PARAMS_FILE = ("models", "xgb_lag24_best_params.json")
+DEFAULT_MODEL_NAME = "model.joblib"
+DEFAULT_PARAMS_FILE = ("config", "model_default_param.json")
 DEFAULT_PARAMS_KEY = "limited"
 DEFAULT_EXPERIMENT_NAME = "pm25-lag24"
 DEFAULT_TRACKING_URI = "sqlite:///mlflow.db"
@@ -460,6 +460,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--train-frac", type=float, default=TRAIN_FRAC)
     parser.add_argument("--val-frac", type=float, default=VAL_FRAC)
     parser.add_argument("--seed", type=int, default=DEFAULT_XGB_PARAMS["random_state"])
+    parser.add_argument("--random-state", dest="seed", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--random_state", dest="seed", type=int, help=argparse.SUPPRESS)
     # XGBoost hyperparameter overrides (for easy experiment variation)
     parser.add_argument("--n-estimators", type=int, default=None)
     parser.add_argument("--max-depth", type=int, default=None)
@@ -468,6 +470,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--colsample-bytree", type=float, default=None)
     parser.add_argument("--min-child-weight", type=int, default=None)
     parser.add_argument("--reg-lambda", type=float, default=None)
+    parser.add_argument("--n-jobs", dest="n_jobs", type=int, default=None)
+    parser.add_argument("--n_jobs", dest="n_jobs", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--tree-method", dest="tree_method", default=None)
+    parser.add_argument("--tree_method", dest="tree_method", default=None, help=argparse.SUPPRESS)
     # MLflow
     parser.add_argument("--no-mlflow", action="store_true", help="disable MLflow logging")
     parser.add_argument("--experiment-name", default=DEFAULT_EXPERIMENT_NAME,
@@ -526,6 +532,10 @@ def build_config(args: argparse.Namespace) -> Config:
         cli_params["min_child_weight"] = args.min_child_weight
     if args.reg_lambda is not None:
         cli_params["reg_lambda"] = args.reg_lambda
+    if getattr(args, "n_jobs", None) is not None:
+        cli_params["n_jobs"] = args.n_jobs
+    if getattr(args, "tree_method", None) is not None:
+        cli_params["tree_method"] = args.tree_method
 
     return Config(
         input_path=input_path.resolve(),
