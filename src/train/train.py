@@ -5,8 +5,8 @@ Expected layout in the target repo:
     <root>/.env
     <root>/data/processed/processed_data.csv                (published by src/feature/feature_engineer.py)
     <root>/data/processed/processed_data_meta.json          (feature/target lists for training)
-    <root>/models/xgb_lag24_final.joblib                    (published by this script)
-    <root>/models/xgb_lag24_final_meta.json                 (model metadata for serving)
+    <root>/models/model.joblib                    (published by this script)
+    <root>/models/model_meta.json                 (model metadata for serving)
     <root>/config/model_default_param.json                (optional tuned hyperparameters)
     <root>/mlflow.db                                        (MLflow SQLite tracking store, default)
 
@@ -34,7 +34,7 @@ Arguments:
     --input                 feature CSV (default: <root>/data/processed/processed_data.csv)
     --meta                  feature meta JSON (default: <root>/data/processed/processed_data_meta.json)
     --output-dir            model output directory (default: <root>/models)
-    --model-name            model artifact file name (default: xgb_lag24_final.joblib)
+    --model-name            model artifact file name (default: model.joblib)
     --params                JSON file with tuned XGB hyperparameters (default: <root>/config/model_default_param.json)
     --params-key            top-level key inside --params to use (default: limited)
     --train-frac            fraction of rows used for training (default: 0.70)
@@ -66,8 +66,8 @@ MLflow UI run :
 
 Other Examples:
     python src/train/train.py
-    python src/train/train.py --experiment-name pm25-lag24-v2 --n-estimators 500 --max-depth 6
-    python src/train/train.py --register-model-name pm25-lag24-xgb --dry-run
+    python src/train/train.py --experiment-name model-v2 --n-estimators 500 --max-depth 6
+    python src/train/train.py --register-model-name model-xgb --dry-run
     python src/train/train.py --no-mlflow
 """
 
@@ -103,7 +103,7 @@ SNAPSHOT_META = "processed_data_meta.json"
 DEFAULT_INPUT = ("data", "processed", SNAPSHOT_FEATURES)
 DEFAULT_META = ("data", "processed", SNAPSHOT_META)
 DEFAULT_OUTPUT_DIR = "models"
-DEFAULT_MODEL_NAME = "xgb_lag24_final.joblib"
+DEFAULT_MODEL_NAME = "model.joblib"
 DEFAULT_PARAMS_FILE = ("config", "model_default_param.json")
 DEFAULT_PARAMS_KEY = "limited"
 DEFAULT_EXPERIMENT_NAME = "pm25-lag24"
