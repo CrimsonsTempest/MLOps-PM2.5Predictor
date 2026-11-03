@@ -1,0 +1,39 @@
+model_name: xgboost_24compact
+mlflow_tracking_uri: sqlite:///mlflow.db
+inference_uri: models:/xgboost_24compact/Production
+model_flavor: sklearn/skops
+versions:
+  - version: 1
+    stage: Production
+    run_id: a7fd25dcba614697ba700e1e00ae8c20
+    model_id: m-3b5e7753086345648694d82c206665b1
+    artifact_uri: /workspaces/MLOps-PM2.5Predictor/mlruns/1/models/m-3b5e7753086345648694d82c206665b1/artifacts
+    exported_dir: models/registered/xgboost_24compact/v1
+    dvc_file: models/registered/xgboost_24compact/v1.dvc
+    exported_at: '2026-11-02T17:56:02.640859+00:00'
+    metrics:
+      run_name: efficient-tern-184
+      n_estimators: 550
+      test_mae: 13.8845
+      test_rmse: 19.3668
+      test_r2: 0.4515
+      val_mae: 16.0655
+      val_rmse: 23.3048
+      val_r2: 0.4778
+  - version: 2
+    stage: Staging
+    run_id: 93c966cea7b24b17b943ce1313ae92e6
+    model_id: m-c0fbaede6c5d49b29ce7d3baf815d30f
+    artifact_uri: /workspaces/MLOps-PM2.5Predictor/mlruns/1/models/m-c0fbaede6c5d49b29ce7d3baf815d30f/artifacts
+    exported_dir: models/registered/xgboost_24compact/v2
+    dvc_file: models/registered/xgboost_24compact/v2.dvc
+    exported_at: '2026-11-02T17:56:02.740004+00:00'
+    metrics:
+      run_name: enchanting-owl-926
+      n_estimators: 750
+      test_mae: 14.0510
+      test_rmse: 19.5843
+      test_r2: 0.4396
+      val_mae: 16.1780
+      val_rmse: 23.3752
+      val_r2: 0.4736
