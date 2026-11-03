@@ -77,6 +77,11 @@ python src/train/train.py
 
 ## melakukan cek hasil pembuatan model
 mlflow ui --backend-store-uri sqlite:///mlflow.db
+
+# 5 Infrence delta pm.25 dari mlflow, jika mlflow tidak ada, akan menggunakan file joblib di models
+python src/inference/inference.py --model-name xgboost_24compact
+
+
 #buka localhost:5000
 ```
 
