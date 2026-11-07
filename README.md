@@ -31,9 +31,17 @@ Berikut adalah flow dari system yang akan dibuat
 │   ├── raw/                # data mentah hasil ingestion dan pointer DVC
 │   ├── preprocessed/       # data bersih dan metadata preprocessing
 │   └── processed/          # data hasil feature engineering dan pointer DVC
-├── mlflow.db               # backend store lokal MLflow
-├── mlruns/                 # run, artefak, dan model MLflow
-├── models/                 # model final, parameter, dan metadata fitur
+├── models/
+│   ├── model.joblib        # model legacy (fallback inferensi)
+│   ├── model_meta.json     # metadata model legacy
+│   └── registered/         # model yang diekspor dari MLflow Model Registry, di-track DVC
+│       ├── .gitignore
+│       ├── model_version.yml   # metadata versi model (MLflow version ↔ DVC hash)
+│       └── xgboost_24compact/
+│           ├── v1.dvc            # pointer DVC versi 1
+│           ├── v2.dvc            # pointer DVC versi 2
+│           ├── v1/               # artefak MLflow versi 1 (DVC-tracked)
+│           └── v2/               # artefak MLflow versi 2 (DVC-tracked)
 ├── notebooks/              # notebook eksplorasi
 ├── src/
 │   ├── data/
@@ -41,8 +49,11 @@ Berikut adalah flow dari system yang akan dibuat
 │   │   └── preprocess.py   # membersihkan dan menyiapkan data
 │   ├── feature/
 │   │   └── feature_engineer.py # membuat fitur untuk training
+│   ├── inference/
+│   │   └── inference.py    # load model dari MLflow registry (models:/xgboost_24compact/Production)
 │   ├── mlflow-meta/
-│   │   └── extract_mlflow_run.py # mengekstrak metadata run MLflow
+│   │   ├── extract_mlflow_run.py # mengekstrak metadata run MLflow dari SQLite
+│   │   └── export_mlflow_to_dvc.py # ekspor artefak MLflow ke folder DVC-tracked + generate model_version.yml
 │   └── train/
 │       └── train.py        # melatih dan mengevaluasi model
 ├── requirements.txt        # dependensi Python
@@ -66,6 +77,11 @@ python src/train/train.py
 
 ## melakukan cek hasil pembuatan model
 mlflow ui --backend-store-uri sqlite:///mlflow.db
+
+# 5 Infrence delta pm.25 dari mlflow, jika mlflow tidak ada, akan menggunakan file joblib di models
+python src/inference/inference.py --model-name xgboost_24compact
+
+
 #buka localhost:5000
 ```
 
@@ -108,3 +124,55 @@ git push && git push --tags
 git tag --list                              # untuk melihat versi apa saja yang terdaftar 
 git checkout v<TIMESTAMP> && dvc checkout   # pindah ke versi timestamp terpilih
 ```
+
+---
+
+## Model Registry & Versioning (MLflow + DVC)
+
+Proyek ini menggunakan **MLflow Model Registry** untuk mengelola siklus hidup model (dari eksperimen ke produksi) dan **DVC** untuk versioning artefak biner model yang telah diekspor dari registry.
+
+### Alur Kerja
+
+1. **Registrasi Model** — Model terbaik dari eksperimen LK-06 didaftarkan ke MLflow Model Registry dengan nama `xgboost_24compact`.
+2. **Versioning Artefak** — Model baru dengan parameter berbeda didaftarkan sebagai versi berikutnya (v2, v3, dst). MLflow secara otomatis melacak riwayat perubahan.
+3. **Transisi Stage** — Model dipindahkan dari stage `None` → `Staging` → `Production` melalui MLflow UI atau API. Hanya versi yang berstatus `Production` yang dapat diakses oleh layanan inferensi.
+4. **Sinkronisasi Metadata dengan DVC** — Artefak model yang dipilih diekspor dari `mlruns/` ke `models/registered/<nama_model>/v<N>/`, lalu di-track dengan `dvc add`. Metadata disimpan di `models/registered/model_version.yml` yang menghubungkan MLflow version ↔ DVC hash → lokasi artefak.
+5. **Verifikasi Inferensi** — Model Production dimuat secara programatik menggunakan `mlflow.pyfunc.load_model("models:/xgboost_24compact/Production")` melalui `src/inference/inference.py`.
+
+### Model Aktif untuk Inferensi
+
+| Versi | Stage | Run ID | Test MAE | Test RMSE | Test R2 | Catatan |
+|-------|-------|--------|----------|-----------|---------|---------|
+| v1 | Production | `a7fd25dcba614697ba700e1e00ae8c20` | 13.88 | 19.37 | 0.452 | Versi aktif untuk inferensi. Generalisasi lebih baik pada data uji. |
+| v2 | Staging | `93c966cea7b24b17b943ce1313ae92e6` | 14.05 | 19.58 | 0.440 | Versi challenger dengan n_estimators 750, performa test sedikit lebih rendah dari v1. |
+
+File `models/registered/model_version.yml` adalah sumber kebenaran untuk versi model mana yang saat ini aktif. File `.dvc` di `models/registered/xgboost_24compact/v1.dvc` dan `v2.dvc` menyimpan checksum artefak biner untuk reproducibility.
+
+### Perintah Export Model ke DVC
+
+```bash
+# Ekspor semua versi model dari MLflow Model Registry ke folder DVC-tracked
+python src/mlflow-meta/export_mlflow_to_dvc.py --model-name xgboost_24compact
+
+# Track artefak biner dengan DVC (data biner disimpan di DVC remote)
+dvc add models/registered/xgboost_24compact/v1/
+dvc add models/registered/xgboost_24compact/v2/
+
+# Commit metadata dan pointer ke Git
+git add models/registered/
+git commit -m "Track model version metadata with DVC"
+git push
+```
+
+### Perintah Inferensi dari Registry
+
+```bash
+# Muat model Production dari MLflow Model Registry
+python src/inference/inference.py --model-name xgboost_24compact
+```
+
+Kode inferensi mencoba memuat dari `models:/xgboost_24compact/Production` terlebih dahulu. Jika gagal, fallback ke `models/model.joblib`.
+
+### Struktur Artefak
+
+- `models/registered/<model>/v<N>/` — artefak MLflow yang diekspor dari Model Registry, di-track oleh DVC. Hanya pointer `.dvc` dan metadata YAML yang disimpan di Git; artefak biner besar disimpan di DVC remote.

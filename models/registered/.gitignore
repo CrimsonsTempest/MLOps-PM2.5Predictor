@@ -1,0 +1,13 @@
+# Jangan commit artefak biner besar ke Git
+# Hanya pointer .dvc dan metadata YAML yang di-commit ke Git
+*.skops
+*.pkl
+*.joblib
+MLmodel
+conda.yaml
+python_env.yaml
+requirements.txt
+
+# Kecuali pointer DVC (file .dvc) dan manifest YAML - ini di-commit
+!*.dvc
+!model_version.yml
