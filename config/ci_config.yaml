@@ -1,0 +1,16 @@
+# CI/CD configuration values for GitHub Actions (.github/workflows/mlops.yml)
+# This file is NOT automatically read by train.py or evaluate_model.py.
+# It serves as a single source of truth for what values the CI workflow
+# should pass via CLI arguments.
+
+evaluation:
+  min_skill: 0.20
+  train_frac: 0.70
+  val_frac: 0.15
+
+training:
+  timeout_minutes: 10
+  model_name: xgboost_24compact
+
+ci:
+  python_version: "3.14.10"

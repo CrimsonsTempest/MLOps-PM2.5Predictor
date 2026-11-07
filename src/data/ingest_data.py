@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Incremental OpenAQ v3 ingestion into an append-only raw snapshot layer.
+"""Incremental OpenAQ v3 ingestion into a versioned raw snapshot layer.
 
 Expected layout in the target repo:
     <root>/.env                              API_KEY=...
-    <root>/data/raw/rawdata_YYYYmmdd_HHMMSS.csv
+    <root>/data/raw/rawdata.csv              (main snapshot, overwritten each run)
+    <root>/data/raw/rawdata_YYYYmmdd_HHMMSS.csv   (optional timestamped copy)
 
 The script works from any depth: the project root is found by walking up from the
 script directory (then from the current directory) until a folder containing
@@ -25,15 +26,29 @@ Flow:
        (datetime_from + limit/page, retry with backoff on throttling/5xx)
     4. concat old + new, de-duplicate on (sensor_id, parameter, datetime_utc) keeping
        the freshly pulled row, sort chronologically
-    5. write a NEW snapshot atomically (rawdata_<ts>.csv.part -> rawdata_<ts>.csv) and
-       verify it; a snapshot that fails verification is never published
+    5. write the snapshot atomically (.part -> replace) and verify it;
+       a snapshot that fails verification is never published
+
+Output modes (mutually exclusive):
+    * default (no flag): overwrite only `rawdata.csv`.
+    * --double: overwrite `rawdata.csv` AND write a timestamped copy
+      `rawdata_YYYYmmdd_HHMMSS.csv`.
+    * --timestamp-only: write ONLY the timestamped copy
+      `rawdata_YYYYmmdd_HHMMSS.csv`; `rawdata.csv` is untouched.
+
+Overwrite policy: the main output `rawdata.csv` is ALWAYS overwritten. Writes are
+atomic (.part -> replace) and deterministic (no timestamps inside the files), so the
+same input yields byte-identical output. Timestamped copies always carry a unique
+timestamp, so they never collide.
 
 Dependencies:
     pip install "polars>=1.0" "requests>=2.31" "python-dotenv>=1.0"
 
 Examples:
-    python src/data/ingest_data.py                   # incremental, full history on cold start
+    python src/data/ingest_data.py                   # incremental, overwrites rawdata.csv
     python src/data/ingest_data.py --days 90         # bound a cold start to the last 90 days
+    python src/data/ingest_data.py --double          # overwrite rawdata.csv + timestamped copy
+    python src/data/ingest_data.py --timestamp-only  # write only timestamped copy
     python src/data/ingest_data.py --overlap-minutes 180
     python src/data/ingest_data.py --force-full --dry-run
     python src/data/ingest_data.py --log-level DEBUG
@@ -65,6 +80,7 @@ BACKOFF_SECONDS = 2.0
 RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 
 SNAPSHOT_GLOB = "rawdata_*.csv"
+SNAPSHOT_MAIN = "rawdata.csv"
 TIMESTAMP_COLUMN = "datetime_utc"
 PERIOD_ANCHOR = "datetimeFrom"   # hourly values are stamped at the interval start
 KEY_COLUMNS = ("sensor_id", "parameter", TIMESTAMP_COLUMN)
@@ -93,6 +109,9 @@ class Config:
     since_days: int | None = None
     force_full: bool = False
     dry_run: bool = False
+    double: bool = False
+    timestamp_only: bool = False
+    timestamp: str = ""
 
 
 # ------------------------------------------------------------------ paths & secrets
@@ -146,6 +165,7 @@ def build_config(args: argparse.Namespace) -> Config:
         )
 
     raw_dir = Path(args.raw_dir).expanduser() if args.raw_dir else root / "data" / "raw"
+    stamp = utcnow().strftime("%Y%m%d_%H%M%S")
     return Config(
         env_file=env_file,
         api_key=api_key.strip(),
@@ -156,6 +176,9 @@ def build_config(args: argparse.Namespace) -> Config:
         since_days=args.days,
         force_full=args.force_full,
         dry_run=args.dry_run,
+        double=args.double,
+        timestamp_only=args.timestamp_only,
+        timestamp=stamp,
     )
 
 
@@ -308,9 +331,18 @@ def last_timestamp(frame: pl.DataFrame) -> datetime:
 
 # ----------------------------------------------------------------------- snapshot IO
 def latest_snapshot(raw_dir: Path) -> Path | None:
-    """Newest rawdata_*.csv; the fixed-width name makes name order == time order."""
+    """Return the canonical raw snapshot for the downstream stage.
+
+    The main snapshot ``rawdata.csv`` takes precedence (it is overwritten on
+    every ingest run with the latest merged data). Falls back to the newest
+    ``rawdata_*.csv`` timestamped copy when the main snapshot is absent, so a
+    default ``preprocess`` run (no ``--input``) always has something to read.
+    """
     if not raw_dir.is_dir():
         return None
+    main = raw_dir / SNAPSHOT_MAIN
+    if main.is_file():
+        return main
     snapshots = sorted(raw_dir.glob(SNAPSHOT_GLOB), key=lambda path: path.name)
     return snapshots[-1] if snapshots else None
 
@@ -460,26 +492,50 @@ def run(cfg: Config) -> int:
             base_path.name,
         )
 
-    output_path = cfg.raw_dir / f"rawdata_{utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    output_path = cfg.raw_dir / f"rawdata_{cfg.timestamp}.csv"
+
+    main_path = cfg.raw_dir / SNAPSHOT_MAIN
+    stamped_path = cfg.raw_dir / f"rawdata_{cfg.timestamp}.csv"
+
     if cfg.dry_run:
-        LOG.info("[dry-run] nothing written; would have created %s", output_path)
+        if cfg.timestamp_only:
+            LOG.info("[dry-run] nothing written; would have created %s", stamped_path)
+        else:
+            LOG.info("[dry-run] nothing written; would have created %s", main_path)
+            if cfg.double:
+                LOG.info("[dry-run] nothing written; would have created %s", stamped_path)
         for line in coverage_lines(merged):
             LOG.info(line)
         return 0
 
     cfg.raw_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = output_path.with_name(output_path.name + ".part")
-    format_timestamps(merged).write_csv(temp_path)
 
-    problems = verify_snapshot(temp_path)
-    if problems:
-        for problem in problems:
-            LOG.error("snapshot rejected: %s", problem)
-        LOG.error("the rejected file was kept for inspection: %s", temp_path)
-        return 1
+    main_path = cfg.raw_dir / SNAPSHOT_MAIN
+    stamped_path = cfg.raw_dir / f"rawdata_{cfg.timestamp}.csv"
 
-    temp_path.replace(output_path)
-    LOG.info("raw snapshot published: %s", output_path)
+    def _write_atomic(df: pl.DataFrame, path: Path) -> None:
+        temp_path = path.with_name(path.name + ".part")
+        format_timestamps(df).write_csv(temp_path)
+        problems = verify_snapshot(temp_path)
+        if problems:
+            for problem in problems:
+                LOG.error("snapshot rejected: %s", problem)
+            LOG.error("the rejected file was kept for inspection: %s", temp_path)
+            raise SystemExit(1)
+        temp_path.replace(path)
+
+    if cfg.timestamp_only:
+        # Write ONLY the timestamped copy; leave rawdata.csv untouched.
+        _write_atomic(merged, stamped_path)
+        LOG.info("raw snapshot published (timestamp-only): %s", stamped_path)
+    else:
+        # Default or --double: always overwrite the main rawdata.csv.
+        _write_atomic(merged, main_path)
+        LOG.info("raw snapshot published: %s", main_path)
+        if cfg.double:
+            _write_atomic(merged, stamped_path)
+            LOG.info("raw snapshot published (double copy): %s", stamped_path)
+
     return 0
 
 
@@ -509,6 +565,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--force-full", action="store_true", help="ignore existing snapshots and pull everything"
+    )
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--double", action="store_true",
+        help="overwrite rawdata.csv and also write a timestamped copy "
+             "rawdata_YYYYmmdd_HHMMSS.csv",
+    )
+    output_group.add_argument(
+        "--timestamp-only", action="store_true",
+        help="write ONLY to a timestamped copy rawdata_YYYYmmdd_HHMMSS.csv; "
+             "leave rawdata.csv untouched",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="fetch and report without writing a snapshot"

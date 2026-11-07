@@ -40,6 +40,7 @@ Arguments:
     --train-frac            fraction of rows used for training (default: 0.70)
     --val-frac              fraction of rows used for validation (default: 0.15; test gets the remainder)
     --seed                  random seed (default: 42)
+    --loss                  XGBoost objective/loss (default: reg:absoluteerror = L1 / MAE)
     --n-estimators          XGBoost n_estimators override (default: from --params or DEFAULT_XGB_PARAMS)
     --max-depth             XGBoost max_depth override
     --learning-rate         XGBoost learning_rate override
@@ -60,6 +61,7 @@ Run parameter variations example:
     python src/train/train.py  --n-estimators 100 --max-depth 4
     python src/train/train.py  --n-estimators 500 --max-depth 6 --learning-rate 0.01
     python src/train/train.py  --n-estimators 1000 --max-depth 8 --learning-rate 0.05 --subsample 0.7
+    python src/train/train.py  --loss reg:squarederror   # switch from L1 (MAE) to MSE (L2)
 
 MLflow UI run :
     mlflow ui --backend-store-uri sqlite:///mlflow.db
@@ -109,11 +111,16 @@ DEFAULT_PARAMS_KEY = "limited"
 DEFAULT_EXPERIMENT_NAME = "pm25-lag24"
 DEFAULT_TRACKING_URI = "sqlite:///mlflow.db"
 
+# Default XGBoost objective: L1 loss (reg:absoluteerror = minimize MAE).
+# Override with --loss (e.g. --loss reg:squarederror for MSE / L2).
+DEFAULT_LOSS = "reg:absoluteerror"
+
 TRAIN_FRAC = 0.70
 VAL_FRAC = 0.15
 # test receives the remainder (~0.15)
 
 DEFAULT_XGB_PARAMS = {
+    "objective": DEFAULT_LOSS,
     "n_estimators": 500,
     "max_depth": 6,
     "learning_rate": 0.05,
@@ -144,6 +151,7 @@ class Config:
     train_frac: float
     val_frac: float
     seed: int
+    loss: str
     dry_run: bool
     overwrite: bool
     # MLflow
@@ -462,6 +470,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=DEFAULT_XGB_PARAMS["random_state"])
     parser.add_argument("--random-state", dest="seed", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--random_state", dest="seed", type=int, help=argparse.SUPPRESS)
+    # Loss / objective used by XGBoost (L1 = MAE by default; changeable via --loss).
+    parser.add_argument(
+        "--loss",
+        default=DEFAULT_LOSS,
+        choices=["reg:squarederror", "reg:absoluteerror", "reg:logistic"],
+        help="XGBoost objective/loss (default: reg:absoluteerror = L1 / MAE)",
+    )
     # XGBoost hyperparameter overrides (for easy experiment variation)
     parser.add_argument("--n-estimators", type=int, default=None)
     parser.add_argument("--max-depth", type=int, default=None)
@@ -537,6 +552,9 @@ def build_config(args: argparse.Namespace) -> Config:
     if getattr(args, "tree_method", None) is not None:
         cli_params["tree_method"] = args.tree_method
 
+    # Always make the objective explicit in the logged XGBoost params.
+    cli_params["objective"] = args.loss
+
     return Config(
         input_path=input_path.resolve(),
         meta_path=meta_path.resolve(),
@@ -547,6 +565,7 @@ def build_config(args: argparse.Namespace) -> Config:
         train_frac=args.train_frac,
         val_frac=args.val_frac,
         seed=args.seed,
+        loss=args.loss,
         dry_run=args.dry_run,
         overwrite=not args.no_overwrite,
         no_mlflow=args.no_mlflow,

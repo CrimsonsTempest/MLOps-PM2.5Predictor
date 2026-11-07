@@ -132,9 +132,18 @@ def resolve_project_root() -> Path:
 
 
 def latest_snapshot(directory: Path) -> Path | None:
-    """Newest cleandata_*.csv; the fixed-width name makes name order == time order."""
+    """Return the canonical cleaned snapshot to featurize.
+
+    The main snapshot ``cleandata.csv`` takes precedence (overwritten on every
+    preprocess run). Falls back to the newest ``cleandata_*.csv`` timestamped
+    copy when the main snapshot is absent, so a default ``feature_engineer``
+    run (no ``--input``) always has something to read.
+    """
     if not directory.is_dir():
         return None
+    main = directory / "cleandata.csv"
+    if main.is_file():
+        return main
     snapshots = sorted(directory.glob(SNAPSHOT_GLOB), key=lambda path: path.name)
     return snapshots[-1] if snapshots else None
 

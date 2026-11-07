@@ -3,8 +3,9 @@
 
 Expected layout in the target repo:
     <root>/.env
-    <root>/data/raw/rawdata_YYYYmmdd_HHMMSS.csv            (produced by src/data/ingest_data.py)
-    <root>/data/preprocessed/cleandata_YYYYmmdd_HHMMSS.csv (published by this script)
+    <root>/data/raw/rawdata.csv              (produced by src/data/ingest_data.py)
+    <root>/data/preprocessed/cleandata.csv   (main cleaned snapshot, overwritten each run)
+    <root>/data/preprocessed/cleandata_YYYYmmdd_HHMMSS.csv   (optional timestamped copy)
 
 The project root is discovered the same way the ingestion stage does it: walk up from
 the script directory (then from the current directory) until a folder containing `.env`
@@ -41,25 +42,32 @@ column, not an index):
     preprocessed_at_utc str       when the cleaning run that produced the row ran
 
 Flow:
-    1. read the newest data/raw/rawdata_*.csv (or the --input given)
+    1. read the newest data/raw/rawdata.csv (or the --input given)
     2. normalise timestamps, drop unusable rows, de-duplicate on
        (sensor_id, parameter, datetime_utc) keeping the newest occurrence
     3. report per-parameter counts and the timeline span; every dropped row is
        accounted for by reason (bad timestamp, blank parameter, bad value)
-    4. verify and publish a NEW timestamped snapshot atomically
-       (cleandata_<ts>.csv.part -> cleandata_<ts>.csv) together with a
-       *.meta.json sidecar holding provenance and drop counts
+    4. verify and publish atomically (.part -> replace)
 
-The fixed-width timestamp in the filename makes name order == time order, exactly
-like the raw layer, so the newest cleaned version is always the last file and the
-history stays versioned on disk (and under DVC, like the raw snapshots).
+Output modes (mutually exclusive):
+    * default (no flag): overwrite only `cleandata.csv`.
+    * --double: overwrite `cleandata.csv` AND write a timestamped copy
+      `cleandata_YYYYmmdd_HHMMSS.csv`.
+    * --timestamp-only: write ONLY the timestamped copy
+      `cleandata_YYYYmmdd_HHMMSS.csv`; `cleandata.csv` is untouched.
+
+Overwrite policy: the main output `cleandata.csv` is ALWAYS overwritten. Writes are
+atomic (.part -> replace) and deterministic (no timestamps inside the files), so the
+same input yields byte-identical output. Timestamped copies always carry a unique
+timestamp, so they never collide.
 
 Dependencies:
     pip install "pandas>=3.0"
 
 Examples:
-    python src/data/preprocess.py
-    python src/data/preprocess.py --input notebooks/openaq_raw_6144741.csv
+    python src/data/preprocess.py                   # overwrite cleandata.csv
+    python src/data/preprocess.py --input data/raw/rawdata.csv --double
+    python src/data/preprocess.py --timestamp-only
     python src/data/preprocess.py --dry-run --log-level DEBUG
 """
 
@@ -77,6 +85,7 @@ import pandas as pd
 
 # --------------------------------------------------------------------------- config
 SNAPSHOT_GLOB = "rawdata_*.csv"
+SNAPSHOT_MAIN = "cleandata.csv"
 DEFAULT_OUTPUT_PREFIX = "cleandata"
 DEFAULT_RAW_DIR = ("data", "raw")
 DEFAULT_OUTPUT_DIR = ("data", "preprocessed")
@@ -121,6 +130,9 @@ class Config:
     input_path: Path
     output_path: Path
     dry_run: bool = False
+    double: bool = False
+    timestamp_only: bool = False
+    timestamp: str = ""
 
 
 def utcnow() -> datetime:
@@ -152,9 +164,18 @@ def resolve_project_root() -> Path:
 
 
 def latest_snapshot(raw_dir: Path) -> Path | None:
-    """Newest rawdata_*.csv; the fixed-width name makes name order == time order."""
+    """Return the canonical raw snapshot to clean.
+
+    The main snapshot ``rawdata.csv`` takes precedence (overwritten on every
+    ingest run). Falls back to the newest ``rawdata_*.csv`` timestamped copy
+    when the main snapshot is absent, so a default ``preprocess`` run (no
+    ``--input``) always has something to read.
+    """
     if not raw_dir.is_dir():
         return None
+    main = raw_dir / "rawdata.csv"
+    if main.is_file():
+        return main
     snapshots = sorted(raw_dir.glob(SNAPSHOT_GLOB), key=lambda path: path.name)
     return snapshots[-1] if snapshots else None
 
@@ -421,14 +442,44 @@ def run(cfg: Config) -> int:
         return 1
 
     if cfg.dry_run:
-        LOG.info("[dry-run] nothing written; would have published %s", cfg.output_path)
+        if cfg.timestamp_only:
+            LOG.info("[dry-run] nothing written; would have created %s", stamped_path)
+        else:
+            LOG.info("[dry-run] nothing written; would have created %s", main_path)
+            if cfg.double:
+                LOG.info("[dry-run] nothing written; would have created %s", stamped_path)
+        for line in coverage_lines(cleaned):
+            LOG.info(line)
         return 0
 
-    write_csv_atomic(stamped, cfg.output_path)
-    write_json_atomic(
-        meta_payload(cfg, counts, stamped, unit_conflicts(cleaned)),
-        cfg.output_path.with_suffix(".meta.json"),
-    )
+    cfg.output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    main_path = cfg.output_path  # cleandata.csv
+    stamped_path = cfg.output_path.parent / f"cleandata_{cfg.timestamp}.csv"
+
+    def _write_atomic(df, path: Path) -> None:
+        temp_path = path.with_name(path.name + ".part")
+        df.to_csv(temp_path, index=False)
+        problems = verify_output(pd.read_csv(temp_path))
+        if problems:
+            for problem in problems:
+                LOG.error("snapshot rejected: %s", problem)
+            LOG.error("the rejected file was kept for inspection: %s", temp_path)
+            raise SystemExit(1)
+        temp_path.replace(path)
+
+    if cfg.timestamp_only:
+        # Write ONLY the timestamped copy; leave cleandata.csv untouched.
+        _write_atomic(stamped, stamped_path)
+        LOG.info("clean snapshot published (timestamp-only): %s", stamped_path)
+    else:
+        # Default or --double: always overwrite the main cleandata.csv.
+        _write_atomic(stamped, main_path)
+        LOG.info("clean snapshot published: %s", main_path)
+        if cfg.double:
+            _write_atomic(stamped, stamped_path)
+            LOG.info("clean snapshot published (double copy): %s", stamped_path)
+
     return 0
 
 
@@ -451,6 +502,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="clean and report without publishing"
+    )
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--double", action="store_true",
+        help="overwrite cleandata.csv and also write a timestamped copy "
+             "cleandata_YYYYmmdd_HHMMSS.csv",
+    )
+    output_group.add_argument(
+        "--timestamp-only", action="store_true",
+        help="write ONLY to a timestamped copy cleandata_YYYYmmdd_HHMMSS.csv; "
+             "leave cleandata.csv untouched",
     )
     parser.add_argument(
         "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -483,13 +545,14 @@ def build_config(args: argparse.Namespace) -> Config:
         output_path = Path(args.output).expanduser()
     else:
         stamp = utcnow().strftime("%Y%m%d_%H%M%S")
-        output_path = root.joinpath(
-            *DEFAULT_OUTPUT_DIR, f"{DEFAULT_OUTPUT_PREFIX}_{stamp}.csv"
-        )
+        output_path = root.joinpath(*DEFAULT_OUTPUT_DIR, SNAPSHOT_MAIN)
     return Config(
         input_path=input_path.resolve() if input_path.exists() else input_path,
         output_path=output_path.resolve(),
         dry_run=args.dry_run,
+        double=args.double,
+        timestamp_only=args.timestamp_only,
+        timestamp=stamp,
     )
 
 
