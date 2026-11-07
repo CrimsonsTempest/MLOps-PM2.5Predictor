@@ -88,10 +88,6 @@ jobs:
             echo "Repository secret AWS_SECRET_ACCESS_KEY is not configured."
             exit 1
           }
-          test -n "$AWS_DEFAULT_REGION" || {
-            echo "Repository secret AWS_DEFAULT_REGION is not configured."
-            exit 1
-          }
 
       - name: Pull DVC data
         run: dvc pull
