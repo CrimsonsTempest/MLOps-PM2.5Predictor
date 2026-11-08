@@ -27,8 +27,13 @@ MLflow integration (experiment management):
     * mlflow.log_model()   -> the trained MultiOutputRegressor (sklearn flavor)
     * mlflow.register_model() -> optional promotion to the Model Registry
 
-Output is written atomically (.part -> replace) and is deterministic given the same input and
-hyperparameters, so retraining is reproducible and DVC-friendly.
+    Hyperparameter tuning (--tune): runs an Optuna study (lazy import) that searches XGBoost
+    hyperparameters on the train/val split and scores validation MAE. The test split (15%) is
+    never seen during the search. Best params are written to --config-out so they can be fed
+    back into train.py via --params <file> --params-key limited.
+
+    Output is written atomically (.part -> replace) and is deterministic given the same input and
+    hyperparameters, so retraining is reproducible and DVC-friendly.
 
 Arguments:
     --input                 feature CSV (default: <root>/data/processed/processed_data.csv)
@@ -173,6 +178,11 @@ class Config:
     run_name: str | None
     register_model_name: str | None
     _cli_params: dict
+    # Optuna hyperparameter tuning
+    tune: bool
+    n_trials: int
+    tune_timeout: float | None
+    config_out: Path | None
 
 
 # --------------------------------------------------------------------------- paths
@@ -327,6 +337,55 @@ def load_best_params(params_file: Path | None, params_key: str) -> dict:
     return {}
 
 
+# ---------------------------------------------------------------------- tuning
+def _run_optuna_tuning(cfg, X_train, y_train, X_val, y_val, targets):
+    """Run an Optuna study to search XGBoost hyperparameters.
+
+    Optuna is imported lazily here so that normal training (--tune not set)
+    does not require optuna to be installed.
+    """
+    try:
+        import optuna
+        from optuna.samplers import TPESampler
+    except ImportError as exc:
+        raise TrainError("optuna is required for --tune; pip install optuna") from exc
+
+    def objective(trial):
+        params = {
+            "objective": cfg.loss,
+            "n_estimators": trial.suggest_int("n_estimators", 50, 1000),
+            "max_depth": trial.suggest_int("max_depth", 2, 10),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+            "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 10.0, log=True),
+            "random_state": cfg.seed,
+            "n_jobs": -1,
+            "tree_method": "hist",
+        }
+        model = build_model(params, cfg.seed)
+        model.fit(X_train, y_train)
+        metrics_val = evaluate(model, X_val, y_val, targets)
+        return metrics_val["mae"]
+
+    study = optuna.create_study(
+        direction="minimize",
+        sampler=TPESampler(seed=cfg.seed),
+    )
+    study.optimize(
+        objective,
+        n_trials=cfg.n_trials,
+        timeout=cfg.tune_timeout,
+    )
+    LOG.info(
+        "optuna done | best_trial=%s | best_val_mae=%.4f",
+        study.best_trial.number,
+        study.best_value,
+    )
+    return dict(study.best_params)
+
+
 # ---------------------------------------------------------------------- pipeline
 def run(cfg: Config) -> int:
     meta = load_meta(cfg.meta_path)
@@ -355,9 +414,23 @@ def run(cfg: Config) -> int:
         )
         return 0
 
-    params = load_best_params(cfg.params_file, cfg.params_key)
-    params.update(cfg._cli_params)
-    LOG.info("xgb params: %s", params)
+    # ---- hyperparameter tuning (Optuna, lazy import) ----
+    if cfg.tune:
+        tuned_params = _run_optuna_tuning(cfg, X_train, y_train, X_val, y_val, targets)
+        tuned_params["objective"] = cfg.loss
+        write_json_atomic(
+            {"limited": tuned_params, "_how_to_use": "pass --params <this file> --params-key limited to train.py"},
+            cfg.config_out,
+        )
+        LOG.info("wrote tuned params -> %s", cfg.config_out)
+        params = dict(tuned_params)
+        params["tuned"] = True
+        params["n_trials"] = cfg.n_trials
+        LOG.info("xgb params (tuned): %s", params)
+    else:
+        params = load_best_params(cfg.params_file, cfg.params_key)
+        params.update(cfg._cli_params)
+        LOG.info("xgb params: %s", params)
     model = build_model(params, cfg.seed)
     model.fit(X_train, y_train)
 
@@ -394,6 +467,9 @@ def run(cfg: Config) -> int:
             mlflow.log_param("train_frac", cfg.train_frac)
             mlflow.log_param("val_frac", cfg.val_frac)
             mlflow.log_param("seed", cfg.seed)
+            mlflow.log_param("tuned", cfg.tune)
+            if cfg.tune:
+                mlflow.log_param("n_trials", cfg.n_trials)
             for k, v in params.items():
                 mlflow.log_param(k, v)
 
@@ -501,6 +577,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--n_jobs", dest="n_jobs", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--tree-method", dest="tree_method", default=None)
     parser.add_argument("--tree_method", dest="tree_method", default=None, help=argparse.SUPPRESS)
+    # Optuna hyperparameter tuning (lazy import: optuna not required for normal training)
+    parser.add_argument("--tune", action="store_true", help="run Optuna hyperparameter search before training")
+    parser.add_argument("--n-trials", type=int, default=30, help="Optuna trials (default: 30)")
+    parser.add_argument("--tune-timeout", type=float, default=None, help="stop Optuna search after N seconds")
+    parser.add_argument("--config-out", default=None, help="write best params JSON to this path (default: config/model_tuned_params.json)")
     # MLflow
     parser.add_argument("--no-mlflow", action="store_true", help="disable MLflow logging")
     parser.add_argument("--experiment-name", default=DEFAULT_EXPERIMENT_NAME,
@@ -585,6 +666,11 @@ def build_config(args: argparse.Namespace) -> Config:
         tracking_uri=args.tracking_uri,
         run_name=args.run_name,
         register_model_name=args.register_model_name,
+        tune=getattr(args, "tune", False),
+        n_trials=getattr(args, "n_trials", 30),
+        tune_timeout=getattr(args, "tune_timeout", None),
+        config_out=Path(args.config_out).expanduser() if getattr(args, "config_out", None)
+            else resolve_project_root() / "config" / "model_tuned_params.json",
         _cli_params=cli_params,
     )
 

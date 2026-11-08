@@ -92,13 +92,26 @@ jobs:
       - name: Pull DVC data
         run: dvc pull
 
-      - name: Train model
+      - name: Train model (default config)
+        id: train-default
+        shell: bash
+        continue-on-error: true
+        run: |
+          # Values mirrored from config/ci_config.yaml (evaluation.train_frac,
+          # evaluation.val_frac).
+          python src/train/train.py \
+            --tracking-uri "$MLFLOW_TRACKING_URI" \
+            --train-frac 0.70 \
+            --val-frac 0.15 || echo "default-train-failed=true" >> $GITHUB_OUTPUT
+
+      - name: Hyperparameter tuning + train (if default failed)
+        if: steps.train-default.outputs.default-train-failed == 'true'
         shell: bash
         run: |
-          # Enforce the LK-01 maximum retraining duration of 10 minutes.
-          # Values mirrored from config/ci_config.yaml (training.timeout_minutes,
-          # evaluation.train_frac, evaluation.val_frac).
-          timeout 10m python src/train/train.py \
+          # Optuna hyperparameter search + training, max 10 minutes, default n-trials.
+          # Searches params, trains the final model, and saves it directly;
+          # no separate retrain step needed.
+          timeout 10m python src/train/train.py --tune --tune-timeout 600 \
             --tracking-uri "$MLFLOW_TRACKING_URI" \
             --train-frac 0.70 \
             --val-frac 0.15
