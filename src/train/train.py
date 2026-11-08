@@ -109,7 +109,7 @@ DEFAULT_MODEL_NAME = "model.joblib"
 DEFAULT_PARAMS_FILE = ("config", "model_default_param.json")
 DEFAULT_PARAMS_KEY = "limited"
 DEFAULT_EXPERIMENT_NAME = "pm25-lag24"
-DEFAULT_TRACKING_URI = "sqlite:///mlflow.db"
+DEFAULT_TRACKING_URI = "http://localhost:5000"
 
 # Default XGBoost objective: L1 loss (reg:absoluteerror = minimize MAE).
 # Override with --loss (e.g. --loss reg:squarederror for MSE / L2).
