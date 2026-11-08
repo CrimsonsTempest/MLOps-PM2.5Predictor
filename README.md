@@ -72,13 +72,25 @@ python src/data/preprocess.py
 # 3. Feature Engineering : susun fitur yang akan digunakan untuk model training
 python src/feature/feature_engineer.py
 
-# 4. Model Training : melatih model berdasarkan data hasil feature engineering
+4. Mlflow server dan UI : menyalakan server penyimpan model dan melakukan cek hasil pembuatan model
+
+mlflow server \
+  --host 0.0.0.0 \
+  --port 5000 \
+  --backend-store-uri sqlite:///mlflow.db \
+  --artifacts-destination ./mlruns \
+  --serve-artifacts \
+  --allowed-hosts "*"
+
+
+  mlflow ui --backend-store-uri sqlite:///mlflow.db
+
+# 5. Model Training : melatih model berdasarkan data hasil feature engineering
 python src/train/train.py
 
-## melakukan cek hasil pembuatan model
-mlflow ui --backend-store-uri sqlite:///mlflow.db
 
-# 5 Infrence delta pm.25 dari mlflow, jika mlflow tidak ada, akan menggunakan file joblib di models
+
+# 6 Infrence delta pm.25 dari mlflow, jika mlflow tidak ada, akan menggunakan file joblib di models
 python src/inference/inference.py --model-name xgboost_24compact
 
 

@@ -131,6 +131,9 @@ def main() -> int:
     Returns:
         0 on success, 1 on failure.
     """
+    parser = argparse.ArgumentParser(
+        description="Register a trained model to MLflow Model Registry."
+    )
     parser.add_argument("--tracking-uri", default=os.environ.get("MLFLOW_TRACKING_URI"))
     parser.add_argument("--model-name", default=os.environ.get("MLFLOW_MODEL_NAME", "pm25-lag24-xgb"))
     parser.add_argument("--model-meta", default="models/model_meta.json")

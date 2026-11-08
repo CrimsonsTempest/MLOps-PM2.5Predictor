@@ -63,8 +63,20 @@ Run parameter variations example:
     python src/train/train.py  --n-estimators 1000 --max-depth 8 --learning-rate 0.05 --subsample 0.7
     python src/train/train.py  --loss reg:squarederror   # switch from L1 (MAE) to MSE (L2)
 
+    
+MLflow Server run :
+    mlflow server \
+  --host 0.0.0.0 \
+  --port 5000 \
+  --backend-store-uri sqlite:///mlflow.db \
+  --artifacts-destination ./mlruns \
+  --serve-artifacts \
+  --allowed-hosts "*"
+    
 MLflow UI run :
     mlflow ui --backend-store-uri sqlite:///mlflow.db
+
+    
 
 Other Examples:
     python src/train/train.py
