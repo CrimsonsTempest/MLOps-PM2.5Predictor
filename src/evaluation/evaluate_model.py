@@ -375,6 +375,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     Returns:
         An argparse.Namespace with parsed arguments.
     """
+    parser = argparse.ArgumentParser(
+        description="Evaluate trained model against persistence baseline."
+    )
     parser.add_argument("--input", default="data/processed/processed_data.csv")
     parser.add_argument("--meta", default="data/processed/processed_data_meta.json")
     parser.add_argument("--model", default="models/model.joblib")
@@ -397,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
     Returns:
         0 if the evaluation gate passed, 1 if it failed, 2 on error.
     """
+    args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s | %(levelname)-7s | %(message)s",
