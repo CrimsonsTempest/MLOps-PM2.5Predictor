@@ -20,10 +20,14 @@ Examples:
 
 import numpy as np
 import pytest
+from types import SimpleNamespace
 
 from src.evaluation.evaluate_model import (
     calculate_metrics,
     chronological_test_split,
+    log_evaluation_to_mlflow,
+    load_model,
+    parse_args,
 )
 
 
@@ -113,3 +117,99 @@ def test_chronological_split_matches_training_arithmetic():
     assert len(y_test) == 15
     assert dates_test[0] == 85
     assert dates_test[-1] == 99
+
+
+def test_cli_accepts_registered_model_version_and_tracking_uri():
+    """The CLI should accept a model version instead of requiring a full MLflow URI."""
+    args = parse_args([
+        "--model-version", "2",
+        "--tracking-uri", "http://localhost:5000",
+    ])
+
+    assert args.model_version == "2"
+    assert args.model_name == "xgboost_24compact"
+    assert args.tracking_uri == "http://localhost:5000"
+
+
+def test_load_model_uses_registered_model_name_and_version(monkeypatch, tmp_path):
+    """A model name and version should form the MLflow registry URI."""
+    loaded = object()
+    calls = []
+
+    class Pyfunc:
+        @staticmethod
+        def load_model(model_uri):
+            calls.append(("load_model", model_uri))
+            return loaded
+
+    class Mlflow:
+        pyfunc = Pyfunc()
+
+        @staticmethod
+        def set_tracking_uri(tracking_uri):
+            calls.append(("set_tracking_uri", tracking_uri))
+
+    monkeypatch.setitem(__import__("sys").modules, "mlflow", Mlflow)
+
+    result = load_model(
+        tmp_path / "does-not-exist.joblib",
+        model_version="2",
+        model_name="pm25-lag24-xgb",
+        tracking_uri="http://localhost:5000",
+    )
+
+    assert result is loaded
+    assert calls == [
+        ("set_tracking_uri", "http://localhost:5000"),
+        ("load_model", "models:/pm25-lag24-xgb/2"),
+    ]
+
+
+def test_evaluation_metrics_are_logged_to_registered_version_source_run(
+    monkeypatch, tmp_path
+):
+    """Evaluation adds scores to the run that produced the selected registry version."""
+    calls = []
+
+    class Client:
+        def __init__(self, tracking_uri):
+            calls.append(("client", tracking_uri))
+
+        def get_model_version(self, name, version):
+            calls.append(("get_model_version", name, version))
+            return type("Version", (), {"run_id": "source-run-123"})()
+
+    fake_mlflow = SimpleNamespace(
+        set_tracking_uri=lambda uri: calls.append(("set_tracking_uri", uri)),
+        log_metrics=lambda metrics, run_id: calls.append(
+            ("log_metrics", metrics, run_id)
+        ),
+        log_artifact=lambda path, artifact_path, run_id: calls.append(
+            ("log_artifact", path, artifact_path, run_id)
+        ),
+        MlflowClient=Client,
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules, "mlflow", fake_mlflow
+    )
+
+    metrics = {
+        "persistence_mae": 10.0,
+        "skill": 0.25,
+        "model_beats_persistence": True,
+        "skill_threshold_passed": True,
+    }
+    report_path = tmp_path / "evaluation_report.json"
+    log_evaluation_to_mlflow(
+        metrics,
+        report_path,
+        model_name="pm25-lag24-xgb",
+        model_version="2",
+        tracking_uri="http://localhost:5000",
+    )
+
+    assert ("get_model_version", "pm25-lag24-xgb", "2") in calls
+    metric_call = next(call for call in calls if call[0] == "log_metrics")
+    assert metric_call[1]["test_skill_vs_persistence"] == 0.25
+    assert metric_call[2] == "source-run-123"
+    assert ("log_artifact", str(report_path), "evaluation", "source-run-123") in calls

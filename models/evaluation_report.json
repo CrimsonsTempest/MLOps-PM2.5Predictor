@@ -1,0 +1,172 @@
+{
+  "evaluation": "persistence_baseline_skill",
+  "target_definition": "target_delta_h = PM2.5(t+h) - PM2.5(t)",
+  "baseline_prediction": "zero_delta (equivalent to predicting current PM2.5)",
+  "horizon": 24,
+  "features_count": 22,
+  "test_rows": 1043,
+  "test_datetime_min": "2026-09-22 07:00:00+00:00",
+  "test_datetime_max": "2026-11-07 00:00:00+00:00",
+  "split": {
+    "train_fraction": 0.7,
+    "validation_fraction": 0.15,
+    "test_fraction": 0.15000000000000005
+  },
+  "metrics": {
+    "model_mae": 13.430505073894219,
+    "persistence_mae": 17.356331895174176,
+    "skill": 0.2261898911008673,
+    "minimum_required_skill": 0.2,
+    "model_beats_persistence": true,
+    "skill_threshold_passed": true,
+    "passed": true,
+    "mae_reference_band_14_to_15": false,
+    "reference_band_is_informational_only": true,
+    "per_horizon": [
+      {
+        "horizon": 1,
+        "model_mae": 6.796381861268081,
+        "persistence_mae": 6.819558964525407,
+        "skill": 0.0033986220190910243
+      },
+      {
+        "horizon": 2,
+        "model_mae": 9.820463054239292,
+        "persistence_mae": 10.570278044103548,
+        "skill": 0.07093616523006474
+      },
+      {
+        "horizon": 3,
+        "model_mae": 11.471407111701113,
+        "persistence_mae": 12.791754554170662,
+        "skill": 0.10321863485404814
+      },
+      {
+        "horizon": 4,
+        "model_mae": 12.446492304585783,
+        "persistence_mae": 14.624161073825503,
+        "skill": 0.1489089704528308
+      },
+      {
+        "horizon": 5,
+        "model_mae": 12.957035637373322,
+        "persistence_mae": 16.106232023010545,
+        "skill": 0.1955265751255818
+      },
+      {
+        "horizon": 6,
+        "model_mae": 13.91396344777872,
+        "persistence_mae": 17.60038350910834,
+        "skill": 0.20945112130209365
+      },
+      {
+        "horizon": 7,
+        "model_mae": 14.12616644187483,
+        "persistence_mae": 18.995493767976992,
+        "skill": 0.25634118204976475
+      },
+      {
+        "horizon": 8,
+        "model_mae": 14.419227434867281,
+        "persistence_mae": 20.03633748801534,
+        "skill": 0.2803461489160838
+      },
+      {
+        "horizon": 9,
+        "model_mae": 14.851766601133438,
+        "persistence_mae": 20.835091083413232,
+        "skill": 0.28717534559007063
+      },
+      {
+        "horizon": 10,
+        "model_mae": 15.027212311808567,
+        "persistence_mae": 21.278235858101628,
+        "skill": 0.2937754608971965
+      },
+      {
+        "horizon": 11,
+        "model_mae": 14.86917614884396,
+        "persistence_mae": 21.48216682646213,
+        "skill": 0.30783629654491673
+      },
+      {
+        "horizon": 12,
+        "model_mae": 14.706302605896534,
+        "persistence_mae": 21.5248322147651,
+        "skill": 0.316775041070534
+      },
+      {
+        "horizon": 13,
+        "model_mae": 14.917594511242992,
+        "persistence_mae": 21.351390220517736,
+        "skill": 0.30132912390370503
+      },
+      {
+        "horizon": 14,
+        "model_mae": 15.415247408265637,
+        "persistence_mae": 21.212368168744007,
+        "skill": 0.27328965414716444
+      },
+      {
+        "horizon": 15,
+        "model_mae": 14.939481709047987,
+        "persistence_mae": 20.754074784276128,
+        "skill": 0.2801663353180861
+      },
+      {
+        "horizon": 16,
+        "model_mae": 15.280417577791262,
+        "persistence_mae": 19.881399808245444,
+        "skill": 0.23142144289789945
+      },
+      {
+        "horizon": 17,
+        "model_mae": 15.205319126186785,
+        "persistence_mae": 18.938255033557045,
+        "skill": 0.19711086901912567
+      },
+      {
+        "horizon": 18,
+        "model_mae": 14.324534946108596,
+        "persistence_mae": 18.044487056567593,
+        "skill": 0.20615449465520042
+      },
+      {
+        "horizon": 19,
+        "model_mae": 13.591775546600454,
+        "persistence_mae": 17.422914669223395,
+        "skill": 0.2198908274165191
+      },
+      {
+        "horizon": 20,
+        "model_mae": 13.181801675323285,
+        "persistence_mae": 16.84170661553212,
+        "skill": 0.2173119995353392
+      },
+      {
+        "horizon": 21,
+        "model_mae": 12.702226055469202,
+        "persistence_mae": 15.949185043144775,
+        "skill": 0.20358149829549876
+      },
+      {
+        "horizon": 22,
+        "model_mae": 12.72633207872017,
+        "persistence_mae": 15.242186001917544,
+        "skill": 0.1650586026755524
+      },
+      {
+        "horizon": 23,
+        "model_mae": 12.501434887739743,
+        "persistence_mae": 14.397411313518695,
+        "skill": 0.13168870323227433
+      },
+      {
+        "horizon": 24,
+        "model_mae": 12.140361289594285,
+        "persistence_mae": 13.852061361457336,
+        "skill": 0.12357006132139803
+      }
+    ]
+  }
+}

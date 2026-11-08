@@ -221,4 +221,19 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# ML model binaries - do not version large binary model files
+*.joblib
+*.pkl
+
+# Installers / backups
+*.zip
+*.deb
+*.bak
+*.msi
+
+# Local DVC configuration (machine-specific, may contain secrets - not for version control)
+.dvc/config
+.dvc/config.local
+*.local
+
 

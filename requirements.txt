@@ -13,6 +13,7 @@ joblib==1.6.0          # Untuk menyimpan (serialize) model Random Forest
 polars==1.44.2
 mlflow==3.17.2        # MLflow: experiment tracking, logging, dan Model Registry
 xgboost==3.4.1
+optuna==5.0.0
 # Workflow Orchestration
 #apache-airflow==2.10.0 # Sesuai kebutuhan orkestrasi
 

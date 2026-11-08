@@ -19,14 +19,17 @@ Expected layout in the target repo:
     <root>/models/evaluation_report.json                  (output evaluation report)
 
 MLflow integration:
-    * Optionally attaches evaluation metrics to the same MLflow run created by train.py.
-    * Requires MLFLOW_TRACKING_URI environment variable and a model_meta.json with
-      mlflow_run_id.
+    * Loads an MLflow model when --model-uri is provided.
+    * Optionally attaches local-model evaluation metrics to the run recorded in model_meta.json.
+    * Uses --tracking-uri or MLFLOW_TRACKING_URI when connecting to MLflow.
 
 Arguments:
     --input         Processed dataset CSV (default: data/processed/processed_data.csv)
     --meta          Feature meta JSON (default: data/processed/processed_data_meta.json)
     --model         Trained model artifact (default: models/model.joblib)
+    --model-version Registered model version to evaluate (uses --model-name)
+    --model-name    Registered model name (default: MLFLOW_MODEL_NAME or xgboost_24compact)
+    --tracking-uri  MLflow tracking server URI (optional; uses MLflow defaults if omitted)
     --output        Evaluation report output path (default: models/evaluation_report.json)
     --min-skill     Minimum skill threshold (default: 0.20)
     --log-level     Logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)
@@ -34,6 +37,7 @@ Arguments:
 Examples:
     python src/evaluation/evaluate_model.py
     python src/evaluation/evaluate_model.py --min-skill 0.25 --log-level DEBUG
+    python src/evaluation/evaluate_model.py --model-version 2 --tracking-uri http://localhost:5000
 
 Exit codes:
     0  Evaluation passed (model beats persistence and skill >= threshold).
@@ -45,6 +49,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -58,6 +63,7 @@ LOG = logging.getLogger("evaluate_model")
 TRAIN_FRAC = 0.70
 VAL_FRAC = 0.15
 MIN_SKILL = 0.20
+DEFAULT_REGISTERED_MODEL_NAME = "xgboost_24compact"
 
 
 class EvaluationError(RuntimeError):
@@ -190,6 +196,84 @@ def chronological_test_split(
     return X[start:], y[start:], datetimes[start:]
 
 
+def load_model(
+    model_path: Path,
+    model_version: str | None = None,
+    model_name: str = DEFAULT_REGISTERED_MODEL_NAME,
+    tracking_uri: str | None = None,
+):
+    """Load a local joblib model or a registered MLflow model version."""
+    if model_version is not None:
+        try:
+            import mlflow
+        except ImportError as exc:
+            raise EvaluationError(
+                "MLflow is required to load --model-version; install mlflow or use --model"
+            ) from exc
+
+        if tracking_uri:
+            mlflow.set_tracking_uri(tracking_uri)
+        model_uri = f"models:/{model_name}/{model_version}"
+        try:
+            return mlflow.pyfunc.load_model(model_uri)
+        except Exception as exc:
+            raise EvaluationError(
+                f"Could not load registered model {model_name} version {model_version}: {exc}"
+            ) from exc
+
+    if not model_path.is_file():
+        raise EvaluationError(f"Trained model not found: {model_path}")
+    return joblib.load(model_path)
+
+
+def log_evaluation_to_mlflow(
+    metrics: dict[str, Any],
+    report_path: Path,
+    *,
+    run_id: str | None = None,
+    model_name: str = DEFAULT_REGISTERED_MODEL_NAME,
+    model_version: str | None = None,
+    tracking_uri: str | None = None,
+) -> None:
+    """Log evaluation results to a local model's run or a registered model's source run."""
+    effective_tracking_uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI")
+    if model_version is None and not (run_id and effective_tracking_uri):
+        return
+
+    try:
+        import mlflow
+
+        if effective_tracking_uri:
+            mlflow.set_tracking_uri(effective_tracking_uri)
+
+        if model_version is not None:
+            from mlflow import MlflowClient
+
+            client = MlflowClient(tracking_uri=effective_tracking_uri)
+            registered_version = client.get_model_version(
+                name=model_name, version=model_version
+            )
+            run_id = registered_version.run_id
+            if not run_id:
+                raise EvaluationError(
+                    f"Registered model {model_name} version {model_version} "
+                    "does not have a source run ID"
+                )
+
+        if run_id:
+            mlflow.log_metrics({
+                "test_persistence_mae": metrics["persistence_mae"],
+                "test_skill_vs_persistence": metrics["skill"],
+                "test_model_beats_persistence": float(metrics["model_beats_persistence"]),
+                "test_skill_threshold_passed": float(metrics["skill_threshold_passed"]),
+            }, run_id=run_id)
+            mlflow.log_artifact(
+                str(report_path), artifact_path="evaluation", run_id=run_id
+            )
+    except Exception:
+        LOG.exception("Could not attach evaluation metrics to MLflow; local report remains valid")
+
+
 def calculate_metrics(
     y_true: np.ndarray, y_pred: np.ndarray, min_skill: float = MIN_SKILL
 ) -> dict[str, Any]:
@@ -273,6 +357,10 @@ def evaluate(
     model_path: Path,
     output_path: Path,
     min_skill: float = MIN_SKILL,
+    *,
+    model_version: str | None = None,
+    model_name: str = DEFAULT_REGISTERED_MODEL_NAME,
+    tracking_uri: str | None = None,
 ) -> dict[str, Any]:
     """Run the full evaluation pipeline and write a JSON report.
 
@@ -283,9 +371,13 @@ def evaluate(
     Args:
         dataset_path: Path to processed_data.csv.
         feature_meta_path: Path to processed_data_meta.json.
-        model_path: Path to the trained model.joblib artifact.
+        model_path: Path to the trained model.joblib artifact (ignored when
+            model_version is provided).
         output_path: Path where the evaluation report JSON will be written.
         min_skill: Minimum required skill score to pass the gate (default: 0.20).
+        model_version: Optional version of the registered model to evaluate.
+        model_name: Registered model name (default: xgboost_24compact).
+        tracking_uri: Optional MLflow tracking server URI used to resolve the model.
 
     Returns:
         A report dict with keys: evaluation, target_definition, baseline_prediction,
@@ -294,15 +386,18 @@ def evaluate(
 
     Raises:
         EvaluationError: If contract validation fails, dataset is invalid,
-            model file is missing, or prediction shape mismatches targets.
+            the selected model cannot be loaded, or prediction shape mismatches targets.
     """
     features, targets, horizon = load_contract(feature_meta_path)
     X, y, datetimes = load_dataset(dataset_path, features, targets)
     X_test, y_test, test_datetimes = chronological_test_split(X, y, datetimes)
 
-    if not model_path.is_file():
-        raise EvaluationError(f"Trained model not found: {model_path}")
-    model = joblib.load(model_path)
+    model = load_model(
+        model_path,
+        model_version=model_version,
+        model_name=model_name,
+        tracking_uri=tracking_uri,
+    )
     predictions = np.asarray(model.predict(X_test), dtype="float64")
 
     if predictions.shape != y_test.shape:
@@ -341,27 +436,22 @@ def evaluate(
     LOG.info("Evaluation gate: %s", "PASSED" if metrics["passed"] else "FAILED")
     LOG.info("Report written to %s", output_path)
 
-    # Optional: attach evaluation metrics to the same MLflow run created by train.py.
+    # Attach evaluation metrics to the source run for the evaluated model.
     run_id = None
-    model_meta_path = model_path.with_name(model_path.stem + "_meta.json")
-    if model_meta_path.is_file():
-        model_meta = json.loads(model_meta_path.read_text(encoding="utf-8"))
-        run_id = model_meta.get("mlflow_run_id")
+    if model_version is None:
+        model_meta_path = model_path.with_name(model_path.stem + "_meta.json")
+        if model_meta_path.is_file():
+            model_meta = json.loads(model_meta_path.read_text(encoding="utf-8"))
+            run_id = model_meta.get("mlflow_run_id")
 
-    tracking_uri = __import__("os").environ.get("MLFLOW_TRACKING_URI")
-    if run_id and tracking_uri:
-        try:
-            import mlflow
-            mlflow.set_tracking_uri(tracking_uri)
-            mlflow.log_metrics({
-                "test_persistence_mae": metrics["persistence_mae"],
-                "test_skill_vs_persistence": metrics["skill"],
-                "test_model_beats_persistence": float(metrics["model_beats_persistence"]),
-                "test_skill_threshold_passed": float(metrics["skill_threshold_passed"]),
-            }, run_id=run_id)
-            mlflow.log_artifact(str(output_path), artifact_path="evaluation")
-        except Exception:
-            LOG.exception("Could not attach evaluation metrics to MLflow; local report remains valid")
+    log_evaluation_to_mlflow(
+        metrics,
+        output_path,
+        run_id=run_id,
+        model_name=model_name,
+        model_version=model_version,
+        tracking_uri=tracking_uri,
+    )
 
     return report
 
@@ -380,7 +470,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--input", default="data/processed/processed_data.csv")
     parser.add_argument("--meta", default="data/processed/processed_data_meta.json")
-    parser.add_argument("--model", default="models/model.joblib")
+    model_source = parser.add_mutually_exclusive_group()
+    model_source.add_argument("--model", default="models/model.joblib")
+    model_source.add_argument(
+        "--model-version",
+        help="Registered MLflow model version number (e.g. 2)",
+    )
+    parser.add_argument(
+        "--model-name",
+        default=os.environ.get("MLFLOW_MODEL_NAME", DEFAULT_REGISTERED_MODEL_NAME),
+        help=f"registered model name (default: MLFLOW_MODEL_NAME or {DEFAULT_REGISTERED_MODEL_NAME})",
+    )
+    parser.add_argument("--tracking-uri", help="MLflow tracking server URI")
     parser.add_argument("--output", default="models/evaluation_report.json")
     parser.add_argument("--min-skill", type=float, default=MIN_SKILL)
     parser.add_argument("--log-level", default="INFO",
@@ -410,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
         report = evaluate(
             Path(args.input), Path(args.meta), Path(args.model),
             Path(args.output), min_skill=args.min_skill,
+            model_version=args.model_version, model_name=args.model_name,
+            tracking_uri=args.tracking_uri,
         )
         return 0 if report["metrics"]["passed"] else 1
     except Exception as exc:
