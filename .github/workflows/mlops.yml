@@ -95,17 +95,29 @@ jobs:
       - name: Train model (default config)
         id: train-default
         shell: bash
-        continue-on-error: true
         run: |
           # Values mirrored from config/ci_config.yaml (evaluation.train_frac,
           # evaluation.val_frac).
           python src/train/train.py \
             --tracking-uri "$MLFLOW_TRACKING_URI" \
             --train-frac 0.70 \
-            --val-frac 0.15 || echo "default-train-failed=true" >> $GITHUB_OUTPUT
+            --val-frac 0.15
 
-      - name: Hyperparameter tuning + train (if default failed)
-        if: steps.train-default.outputs.default-train-failed == 'true'
+      - name: Evaluate default model
+        id: evaluate-default
+        shell: bash
+        continue-on-error: true
+        run: |
+          # Values mirrored from config/ci_config.yaml (evaluation.min_skill).
+          python src/evaluation/evaluate_model.py \
+            --input data/processed/processed_data.csv \
+            --meta data/processed/processed_data_meta.json \
+            --model models/model.joblib \
+            --output models/evaluation_report.json \
+            --min-skill 0.20 || echo "default-eval-failed=true" >> $GITHUB_OUTPUT
+
+      - name: Hyperparameter tuning + train (if default eval failed)
+        if: steps.evaluate-default.outputs.default-eval-failed == 'true'
         shell: bash
         run: |
           # Optuna hyperparameter search + training, max 10 minutes, default n-trials.
