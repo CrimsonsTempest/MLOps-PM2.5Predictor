@@ -4,7 +4,9 @@
 Expected layout in the target repo:
     <root>/.env                              API_KEY=...
     <root>/data/raw/rawdata.csv              (main snapshot, overwritten each run)
+    <root>/data/raw/rawdata_meta.json        (provenance + drop counts sidecar)
     <root>/data/raw/rawdata_YYYYmmdd_HHMMSS.csv   (optional timestamped copy)
+    <root>/data/raw/rawdata_YYYYmmdd_HHMMSS_meta.json   (meta for the timestamped copy)
 
 The script works from any depth: the project root is found by walking up from the
 script directory (then from the current directory) until a folder containing
@@ -30,16 +32,21 @@ Flow:
        a snapshot that fails verification is never published
 
 Output modes (mutually exclusive):
-    * default (no flag): overwrite only `rawdata.csv`.
-    * --double: overwrite `rawdata.csv` AND write a timestamped copy
-      `rawdata_YYYYmmdd_HHMMSS.csv`.
+    * default (no flag): overwrite only `rawdata.csv` and write `rawdata_meta.json`.
+    * --double: overwrite `rawdata.csv` + `rawdata_meta.json`, AND write a timestamped
+      copy `rawdata_YYYYmmdd_HHMMSS.csv` (+ its `_meta.json` sidecar).
     * --timestamp-only: write ONLY the timestamped copy
-      `rawdata_YYYYmmdd_HHMMSS.csv`; `rawdata.csv` is untouched.
+      `rawdata_YYYYmmdd_HHMMSS.csv` (+ its `_meta.json` sidecar); `rawdata.csv` is
+      untouched.
 
 Overwrite policy: the main output `rawdata.csv` is ALWAYS overwritten. Writes are
 atomic (.part -> replace) and deterministic (no timestamps inside the files), so the
 same input yields byte-identical output. Timestamped copies always carry a unique
 timestamp, so they never collide.
+
+Deprecation: `data/raw/dataset.csv` is deprecated. The canonical raw snapshot is now
+`data/raw/rawdata.csv`; `dataset.csv` is no longer read or written by any pipeline
+stage and will be removed in a future release.
 
 Dependencies:
     pip install "polars>=1.0" "requests>=2.31" "python-dotenv>=1.0"
@@ -57,11 +64,12 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -81,6 +89,7 @@ RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 
 SNAPSHOT_GLOB = "rawdata_*.csv"
 SNAPSHOT_MAIN = "rawdata.csv"
+SNAPSHOT_META = "rawdata_meta.json"
 TIMESTAMP_COLUMN = "datetime_utc"
 PERIOD_ANCHOR = "datetimeFrom"   # hourly values are stamped at the interval start
 KEY_COLUMNS = ("sensor_id", "parameter", TIMESTAMP_COLUMN)
@@ -418,9 +427,67 @@ def verify_snapshot(path: Path) -> list[str]:
     return problems
 
 
+# ------------------------------------------------------------------- meta sidecar
+def write_json_atomic(payload: dict[str, object], path: Path) -> None:
+    """Publish a JSON sidecar through a .part file so a half-written file is never visible."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(path.name + ".part")
+    temp_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, default=str) + "\n",
+        encoding="utf-8",
+    )
+    temp_path.replace(path)
+    LOG.info("published: %s", path)
+
+
+def ingest_meta_payload(
+    cfg: Config,
+    merged: pl.DataFrame,
+    base_path: Path | None,
+    sensors: list[dict],
+) -> dict[str, object]:
+    """Provenance + row counts published next to the CSV for the downstream stage."""
+    parsed = normalize_timestamps(merged)
+    first = parsed[TIMESTAMP_COLUMN].min()
+    last = parsed[TIMESTAMP_COLUMN].max()
+    parameters = sorted({str(p) for p in merged["parameter"].unique().to_list()})
+    source_name = base_path.name if base_path is not None else "cold start"
+    return {
+        "generated_at_utc": iso(utcnow()),
+        "source_file": source_name,
+        "source_path": str(base_path) if base_path is not None else None,
+        "output_file": SNAPSHOT_MAIN,
+        "rows": int(merged.height),
+        "sensors": sensors,
+        "parameters": parameters,
+        "first_hour_utc": iso(first) if first is not None else None,
+        "last_hour_utc": iso(last) if last is not None else None,
+        "overlap_minutes": cfg.overlap_minutes,
+        "since_days": cfg.since_days,
+        "force_full": cfg.force_full,
+        "settings": {
+            key: (str(value) if isinstance(value, Path) else value)
+            for key, value in asdict(cfg).items()
+        },
+        "library_versions": {
+            "polars": pl.__version__,
+            "requests": requests.__version__,
+        },
+    }
+
+
 # --------------------------------------------------------------------------- pipeline
 def run(cfg: Config) -> int:
     session = build_session(cfg.api_key)
+
+    # Deprecation: dataset.csv is superseded by rawdata.csv.
+    legacy_dataset = cfg.raw_dir / "dataset.csv"
+    if legacy_dataset.is_file():
+        LOG.warning(
+            "DEPRECATED: %s still exists; the canonical raw snapshot is now rawdata.csv. "
+            "dataset.csv will be removed in a future release.",
+            legacy_dataset,
+        )
 
     sensors = fetch_sensors(session, cfg.location_id)
     LOG.info(
@@ -524,16 +591,24 @@ def run(cfg: Config) -> int:
             raise SystemExit(1)
         temp_path.replace(path)
 
+    meta = ingest_meta_payload(cfg, merged, base_path, sensors)
+
     if cfg.timestamp_only:
-        # Write ONLY the timestamped copy; leave rawdata.csv untouched.
+        # Write ONLY the timestamped copy (+ its meta sidecar); leave rawdata.csv untouched.
         _write_atomic(merged, stamped_path)
+        meta_path = cfg.raw_dir / f"rawdata_{cfg.timestamp}_meta.json"
+        write_json_atomic(meta, meta_path)
         LOG.info("raw snapshot published (timestamp-only): %s", stamped_path)
     else:
-        # Default or --double: always overwrite the main rawdata.csv.
+        # Default or --double: always overwrite the main rawdata.csv + meta sidecar.
         _write_atomic(merged, main_path)
+        meta_path = cfg.raw_dir / SNAPSHOT_META
+        write_json_atomic(meta, meta_path)
         LOG.info("raw snapshot published: %s", main_path)
         if cfg.double:
             _write_atomic(merged, stamped_path)
+            stamped_meta_path = cfg.raw_dir / f"rawdata_{cfg.timestamp}_meta.json"
+            write_json_atomic(meta, stamped_meta_path)
             LOG.info("raw snapshot published (double copy): %s", stamped_path)
 
     return 0

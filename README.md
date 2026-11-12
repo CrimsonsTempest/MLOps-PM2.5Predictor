@@ -119,16 +119,17 @@ dvc remote modify --local <remote-name> secret_access_key <SECRET_ACCESS_KEY>
 
 ### 2. Data Version Tracking 
 
-Karena ingestion memberikan timestamp otomatis , dan dvc membutuhkan 1 nama file konstan, pertama masukan/copy isi data yang ingin di version ke dataset.csv , lalu track.
+Ingestion by default writes the constant-named snapshot `data/raw/rawdata.csv` (no timestamp inside the file). DVC needs a fixed filename to track, so track `rawdata.csv` directly — no copy step is needed for the default run. `dataset.csv` (lama) telah di-deprecate dan diganti oleh `rawdata.csv`.
 
 ```bash
-cp data/raw/rawdata_<TIMESTAMP>.csv data/raw/dataset.csv
-dvc add data/raw/dataset.csv
-git add data/raw/dataset.csv.dvc
-git commit -m "Track dataset version <TIMESTAMP>"
-git tag v<TIMESTAMP>
+dvc add data/raw/rawdata.csv
+git add data/raw/rawdata.csv.dvc
+git commit -m "Track raw dataset v<VERSION>"
+git tag v<VERSION>
 git push && git push --tags
 ```
+
+> **Deprecation:** `data/raw/dataset.csv` is deprecated. The canonical raw snapshot is now `data/raw/rawdata.csv`. `dataset.csv` is no longer read or written by any pipeline stage and will be removed in a future release.
 
 ### 3. Data Version Switching
 

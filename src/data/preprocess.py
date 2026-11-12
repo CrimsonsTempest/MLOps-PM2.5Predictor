@@ -5,7 +5,9 @@ Expected layout in the target repo:
     <root>/.env
     <root>/data/raw/rawdata.csv              (produced by src/data/ingest_data.py)
     <root>/data/preprocessed/cleandata.csv   (main cleaned snapshot, overwritten each run)
+    <root>/data/preprocessed/cleandata_meta.json   (provenance + drop counts sidecar)
     <root>/data/preprocessed/cleandata_YYYYmmdd_HHMMSS.csv   (optional timestamped copy)
+    <root>/data/preprocessed/cleandata_YYYYmmdd_HHMMSS_meta.json   (meta for the timestamped copy)
 
 The project root is discovered the same way the ingestion stage does it: walk up from
 the script directory (then from the current directory) until a folder containing `.env`
@@ -50,16 +52,21 @@ Flow:
     4. verify and publish atomically (.part -> replace)
 
 Output modes (mutually exclusive):
-    * default (no flag): overwrite only `cleandata.csv`.
-    * --double: overwrite `cleandata.csv` AND write a timestamped copy
-      `cleandata_YYYYmmdd_HHMMSS.csv`.
+    * default (no flag): overwrite only `cleandata.csv` and write `cleandata_meta.json`.
+    * --double: overwrite `cleandata.csv` + `cleandata_meta.json`, AND write a timestamped
+      copy `cleandata_YYYYmmdd_HHMMSS.csv` (+ its `_meta.json` sidecar).
     * --timestamp-only: write ONLY the timestamped copy
-      `cleandata_YYYYmmdd_HHMMSS.csv`; `cleandata.csv` is untouched.
+      `cleandata_YYYYmmdd_HHMMSS.csv` (+ its `_meta.json` sidecar); `cleandata.csv` is
+      untouched.
 
 Overwrite policy: the main output `cleandata.csv` is ALWAYS overwritten. Writes are
 atomic (.part -> replace) and deterministic (no timestamps inside the files), so the
 same input yields byte-identical output. Timestamped copies always carry a unique
 timestamp, so they never collide.
+
+Deprecation: `data/raw/dataset.csv` is deprecated. The canonical raw snapshot is now
+`data/raw/rawdata.csv` (produced by `src/data/ingest_data.py`); `dataset.csv` is no
+longer read or written by any pipeline stage and will be removed in a future release.
 
 Dependencies:
     pip install "pandas>=3.0"
@@ -86,6 +93,7 @@ import pandas as pd
 # --------------------------------------------------------------------------- config
 SNAPSHOT_GLOB = "rawdata_*.csv"
 SNAPSHOT_MAIN = "cleandata.csv"
+SNAPSHOT_META = "cleandata_meta.json"
 DEFAULT_OUTPUT_PREFIX = "cleandata"
 DEFAULT_RAW_DIR = ("data", "raw")
 DEFAULT_OUTPUT_DIR = ("data", "preprocessed")
@@ -468,16 +476,25 @@ def run(cfg: Config) -> int:
             raise SystemExit(1)
         temp_path.replace(path)
 
+    conflicts = unit_conflicts(cleaned)
+    meta = meta_payload(cfg, counts, stamped, conflicts)
+
     if cfg.timestamp_only:
-        # Write ONLY the timestamped copy; leave cleandata.csv untouched.
+        # Write ONLY the timestamped copy (+ its meta sidecar); leave cleandata.csv untouched.
         _write_atomic(stamped, stamped_path)
+        meta_path = cfg.output_path.parent / f"cleandata_{cfg.timestamp}_meta.json"
+        write_json_atomic(meta, meta_path)
         LOG.info("clean snapshot published (timestamp-only): %s", stamped_path)
     else:
-        # Default or --double: always overwrite the main cleandata.csv.
+        # Default or --double: always overwrite the main cleandata.csv + meta sidecar.
         _write_atomic(stamped, main_path)
+        meta_path = cfg.output_path.parent / SNAPSHOT_META
+        write_json_atomic(meta, meta_path)
         LOG.info("clean snapshot published: %s", main_path)
         if cfg.double:
             _write_atomic(stamped, stamped_path)
+            stamped_meta_path = cfg.output_path.parent / f"cleandata_{cfg.timestamp}_meta.json"
+            write_json_atomic(meta, stamped_meta_path)
             LOG.info("clean snapshot published (double copy): %s", stamped_path)
 
     return 0
