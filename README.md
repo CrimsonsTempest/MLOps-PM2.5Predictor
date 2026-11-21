@@ -119,7 +119,7 @@ dvc remote modify --local <remote-name> secret_access_key <SECRET_ACCESS_KEY>
 
 ### 2. Data Version Tracking 
 
-Ingestion by default writes the constant-named snapshot `data/raw/rawdata.csv` (no timestamp inside the file). DVC needs a fixed filename to track, so track `rawdata.csv` directly — no copy step is needed for the default run. `dataset.csv` (lama) telah di-deprecate dan diganti oleh `rawdata.csv`.
+Ingestion secara default menulis snapshot dengan nama konstan `data/raw/rawdata.csv` (tanpa timestamp di dalamnya). DVC butuh nama file yang tetap untuk di-track, jadi langsung track `rawdata.csv` — tidak perlu langkah copy untuk running default. `dataset.csv` (lama) telah di-deprecate dan diganti oleh `rawdata.csv`.
 
 ```bash
 dvc add data/raw/rawdata.csv
@@ -129,13 +129,13 @@ git tag v<VERSION>
 git push && git push --tags
 ```
 
-> **Deprecation:** `data/raw/dataset.csv` is deprecated. The canonical raw snapshot is now `data/raw/rawdata.csv`. `dataset.csv` is no longer read or written by any pipeline stage and will be removed in a future release.
+> **Deprecasi:** `data/raw/dataset.csv` telah di-deprecate. Snapshot kanan yang kanonikal sekarang adalah `data/raw/rawdata.csv`. `dataset.csv` tidak lagi dibaca atau ditulis oleh stage pipeline mana pun dan akan dihapus di rilis mendatang.
 
 ### 3. Data Version Switching
 
 ```bash
 git tag --list                              # untuk melihat versi apa saja yang terdaftar 
-git checkout v<TIMESTAMP> && dvc checkout   # pindah ke versi timestamp terpilih
+git checkout v<VERSION> && dvc checkout     # pindah ke versi terpilih
 ```
 
 ---
@@ -189,3 +189,46 @@ Kode inferensi mencoba memuat dari `models:/xgboost_24compact/Production` terleb
 ### Struktur Artefak
 
 - `models/registered/<model>/v<N>/` — artefak MLflow yang diekspor dari Model Registry, di-track oleh DVC. Hanya pointer `.dvc` dan metadata YAML yang disimpan di Git; artefak biner besar disimpan di DVC remote.
+
+## Menjalankan Seluruh Sistem dengan Docker Compose
+
+Proyek ini menyediakan `docker-compose.yaml` untuk mengorkestrasi dua layanan secara bersamaan:
+1. **mlflow-server** — MLflow Tracking Server + Model Registry (port 5000)
+2. **api-service** — FastAPI inference API yang menjalankan pipeline data, inference, dan menyajikan hasil via HTTP (port 8000)
+
+### Persyaratan
+- Docker dan Docker Compose terinstal.
+- File `.env` berisi `API_KEY` untuk ingest data OpenAQ.
+
+### Menjalankan Sistem
+
+```bash
+# 1. Bangun image dan jalankan kedua layanan di background
+docker compose up -d --build
+
+# 2. Lihat status kontainer
+docker compose ps
+
+# 3. Matikan semua layanan
+docker compose down
+```
+
+### Verifikasi Komunikasi Antar Kontainer
+
+```bash
+# Cek kesehatan API dan koneksi ke MLflow
+curl http://localhost:8000/health
+
+# Lihat hasil inference terbaru (dari SQLite cache)
+curl http://localhost:8000/predict
+
+# Paksa jalankan pipeline + inference segera
+curl -X POST http://localhost:8000/inference
+```
+
+### Jaringan dan Penyimpanan
+- Dua layanan terhubung dalam jaringan custom bridge `pm25-net`, sehingga saling dikenal via nama layanan (service discovery).
+- `mlflow.db` dan `mlruns` di-bind mount dari host agar data MLflow persisten.
+- Hasil inference disimpan di named volume `pm25-cache` (SQLite) di `/app/cache/inference_cache.db`.
+- `api-service` bergantung pada `mlflow-server` (`depends_on` dengan `service_healthy`), sehingga MLflow siap terlebih dahulu sebelum API mulai.
+
