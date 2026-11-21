@@ -28,6 +28,13 @@ jobs:
             echo "WARNING: secrets.API_KEY not set; using dummy key. Ingest will fail but API stays up."
           fi
 
+      - name: Initialize mlflow.db if not exists
+        run: |
+          if [ ! -f mlflow.db ]; then
+            touch mlflow.db
+            echo "Created empty mlflow.db for bind mount"
+          fi
+
       - name: Build docker compose services (no push)
         run: |
           docker compose build
@@ -48,7 +55,7 @@ jobs:
             sleep 5
           done
           echo "mlflow-server did not become healthy in time"
-          docker compose logs pm25-mlflow-server --tail 50
+          docker compose logs mlflow-server --tail 50
           exit 1
 
       - name: Verify api-service is running
@@ -71,7 +78,7 @@ jobs:
             sleep 3
           done
           echo "/health did not return 200"
-          docker compose logs pm25-api-service --tail 50
+          docker compose logs api-service --tail 50
           exit 1
 
       - name: Teardown services

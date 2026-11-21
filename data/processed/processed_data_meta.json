@@ -52,7 +52,7 @@
   "horizon": 24,
   "hour_tz": "UTC",
   "source_file": "cleandata.csv",
-  "n_rows": 7225,
+  "n_rows": 7227,
   "datetime_min": "2025-11-28 15:00:00+00:00",
-  "datetime_max": "2026-11-20 12:00:00+00:00"
+  "datetime_max": "2026-11-20 14:00:00+00:00"
 }
