@@ -268,6 +268,55 @@ def build_features(raw: pd.DataFrame, hour_tz: str = "UTC", with_targets: bool =
     return out
 
 
+# --------------------------------------------------------------------- latest features (serving)
+def get_latest_features(
+    input_path: Path = None,
+    hour_tz: str = "UTC",
+    lookback_hours: int = 48,
+) -> pd.DataFrame:
+    """
+    Ambil baris fitur terbaru (1 baris) tanpa target, untuk serving.
+
+    Tidak perlu load full data; cukup ambil N jam terakhir dari cleandata
+    untuk menghitung lag dan rolling window yang valid. Lookback default 48 jam
+    sudah cukup untuk lag_24 dan rolling window 24h.
+
+    Parameters
+    ----------
+    input_path : Path, optional
+        Path ke cleandata.csv. Jika None, pakai latest_snapshot default.
+    hour_tz : str
+        Time zone untuk hour_sin / hour_cos.
+    lookback_hours : int
+        Berapa jam terakhir yang diambil dari cleandata untuk perhitungan fitur.
+        Default 48 jam cukup untuk lag_24 dan rolling 24h.
+
+    Returns
+    -------
+    pd.DataFrame
+        1 baris dengan 22 fitur (tanpa target_delta), siap untuk model.predict().
+    """
+    if input_path is None:
+        input_dir = Path(__file__).resolve().parents[2].joinpath(*DEFAULT_INPUT_DIR)
+        input_path = latest_snapshot(input_dir)
+        if input_path is None:
+            raise FeatureError(f"no {SNAPSHOT_GLOB} snapshot inside {input_dir}")
+
+    wide = load_input(input_path)
+
+    wide[DATETIME_COL] = pd.to_datetime(wide[DATETIME_COL], utc=True)
+    wide = wide.sort_values(DATETIME_COL)
+
+    if lookback_hours and lookback_hours > 0:
+        cutoff = wide[DATETIME_COL].max() - pd.Timedelta(hours=lookback_hours - 1)
+        wide = wide[wide[DATETIME_COL] >= cutoff]
+
+    feats = build_features(wide, hour_tz=hour_tz, with_targets=False)
+
+    latest = feats.tail(1).reset_index(drop=True)
+    return latest
+
+
 
 # --------------------------------------------------------------------- output IO
 def write_csv_atomic(frame: pd.DataFrame, path: Path) -> None:

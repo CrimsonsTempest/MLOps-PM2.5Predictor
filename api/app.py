@@ -50,6 +50,7 @@ PIPELINE_STEPS = [
     ["python", str(PROJECT_ROOT / "src" / "data" / "preprocess.py")],
     ["python", str(PROJECT_ROOT / "src" / "feature" / "feature_engineer.py")],
 ]
+from src.feature.feature_engineer import get_latest_features
 
 app = FastAPI(title="PM2.5 Predictor Inference API", version="1.0.0")
 
@@ -115,21 +116,21 @@ def convert_delta_to_absolute(latest_pm25: float, deltas):
 def run_inference():
     run_data_pipeline()
 
-    latest_df = get_latest_row()
+    latest_feats = get_latest_features(lookback_hours=48)
     meta = load_model_meta()
 
     feature_cols = meta.get("features", [])
     target_cols = meta.get("targets", [f"target_delta_{i}" for i in range(1, 25)])
 
     if feature_cols:
-        X = latest_df[feature_cols]
+        X = latest_feats[feature_cols]
     else:
-        X = latest_df
+        X = latest_feats
 
-    latest_pm25 = float(latest_df["pm25"].iloc[0]) if "pm25" in latest_df.columns else 0.0
+    latest_pm25 = float(latest_feats["pm25"].iloc[0]) if "pm25" in latest_feats.columns else 0.0
     base_datetime = (
-        str(latest_df["datetime"].iloc[0])
-        if "datetime" in latest_df.columns
+        str(latest_feats["datetime"].iloc[0])
+        if "datetime" in latest_feats.columns
         else datetime.now(timezone.utc).isoformat()
     )
 
