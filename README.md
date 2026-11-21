@@ -1,3 +1,4 @@
+[![Docker Smoke Test](https://github.com/CrimsonsTempest/MLOps-PM2.5Predictor/actions/workflows/docker-smoke.yml/badge.svg)](https://github.com/CrimsonsTempest/MLOps-PM2.5Predictor/actions/workflows/docker-smoke.yml)
 # MLOps-PM2.5Predictor
 
 Proyek ini bertujuan untuk membuat sebuah sistem machine learning untuk melakukan prediksi pada nilai pm25 di udara. Dilengkapi dengan proses retraining setiap terjadinya drift yang akan di detect oleh software monitoring, dengan menggunakan apache airflow untuk melakukan fetching data.
