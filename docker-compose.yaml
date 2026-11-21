@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  mlflow-server:
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
+    container_name: pm25-mlflow-server
+    working_dir: /app
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+    networks:
+      - pm25-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api-service:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: pm25-api-service
+    working_dir: /app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
+      - MLFLOW_MODEL_NAME=xgboost_24compact
+      - CACHE_DB_PATH=/app/cache/inference_cache.db
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./src:/app/src
+      - ./.env:/app/.env
+      - pm25-cache:/app/cache
+    networks:
+      - pm25-net
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+
+networks:
+  pm25-net:
+    driver: bridge
+
+volumes:
+  pm25-cache:
