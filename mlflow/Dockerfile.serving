@@ -1,0 +1,6 @@
+FROM pm25-model-serving:latest AS model
+
+FROM python:3.14-slim
+WORKDIR /opt/ml
+COPY --from=model /opt/ml/model /opt/ml/model
+RUN pip install --no-cache-dir -r /opt/ml/model/requirements.txt

@@ -191,45 +191,93 @@ Kode inferensi mencoba memuat dari `models:/xgboost_24compact/Production` terleb
 
 - `models/registered/<model>/v<N>/` — artefak MLflow yang diekspor dari Model Registry, di-track oleh DVC. Hanya pointer `.dvc` dan metadata YAML yang disimpan di Git; artefak biner besar disimpan di DVC remote.
 
-## Menjalankan Seluruh Sistem dengan Docker Compose
+## Model Serving & Horizontal Scaling (LK-10)
 
-Proyek ini menyediakan `docker-compose.yaml` untuk mengorkestrasi dua layanan secara bersamaan:
-1. **mlflow-server** — MLflow Tracking Server + Model Registry (port 5000)
-2. **api-service** — FastAPI inference API yang menjalankan pipeline data, inference, dan menyajikan hasil via HTTP (port 8000)
+`docker-compose.yaml` kini mengorkestrasi stack serving model MLflow dengan 3 replika:
 
-### Persyaratan
-- Docker dan Docker Compose terinstal.
-- File `.env` berisi `API_KEY` untuk ingest data OpenAQ.
+1. **model-serving** — image hasil `mlflow models build-docker` (model dibundel di dalam image), `deploy: replicas: 3`, port 8080 internal (`command` menimpa entrypoint: `mlflow models serve --host 0.0.0.0 --port 8080`)
+2. **serving-proxy** — nginx reverse proxy (port 8080), satu pintu masuk yang mendistribusikan request secara round-robin ke 3 replika
+
+### Persiapan
+
+**Persyaratan:**
+- Docker dan Docker Compose (v2) terinstal.
+- Model `xgboost_24compact` berstatus **Production** di MLflow Model Registry.
+
+**Langkah 1 — Build image original (hasil `mlflow models build-docker`):**
+
+```bash
+mlflow models build-docker -m models:/xgboost_24compact/Production -n pm25-model-serving:latest
+```
+
+Image original berisi model + entrypoint mlflow, tetapi memakai Python 3.11 dan memasang dependensi saat runtime (mode `virtualenv`) — tidak cocok untuk 3 replika (pip install ×3 saat start → crash-loop).
+
+**Langkah 2 — Build image turunan:**
+
+```bash
+docker compose build model-serving
+```
+
+Image turunan (`mlflow/Dockerfile.serving`) menyalin model dari image original ke `python:3.14-slim` (sesuai environment training) dan memasang dependensi saat build — start cepat tanpa pip runtime.
 
 ### Menjalankan Sistem
 
 ```bash
-# 1. Bangun image dan jalankan kedua layanan di background
-docker compose up -d --build
+# 1. Jalankan seluruh stack (3 replika model-serving + proxy)
+docker compose up -d
 
-# 2. Lihat status kontainer
+# 2. Lihat status kontainer (harus tampil 3 replika model-serving)
 docker compose ps
 
 # 3. Matikan semua layanan
 docker compose down
 ```
 
-### Verifikasi Komunikasi Antar Kontainer
+### Mengakses Endpoint API
+
+| Endpoint | Alamat | Fungsi |
+|----------|--------|--------|
+| Inference | `http://localhost:8080/invocations` (POST) | Prediksi PM2.5 24 jam (input 22 fitur, output 24 delta) |
 
 ```bash
-# Cek kesehatan API dan koneksi ke MLflow
-curl http://localhost:8000/health
-
-# Lihat hasil inference terbaru (dari SQLite cache)
-curl http://localhost:8000/predict
-
-# Paksa jalankan pipeline + inference segera
-curl -X POST http://localhost:8000/inference
+# Uji prediksi via proxy (didistribusikan ke salah satu dari 3 replika)
+curl -sS -X POST http://localhost:8080/invocations \
+  -H "Content-Type: application/json" \
+  -d @test_payload.json
 ```
 
-### Jaringan dan Penyimpanan
-- Dua layanan terhubung dalam jaringan custom bridge `pm25-net`, sehingga saling dikenal via nama layanan (service discovery).
-- `mlflow.db` dan `mlruns` di-bind mount dari host agar data MLflow persisten.
-- Hasil inference disimpan di named volume `pm25-cache` (SQLite) di `/app/cache/inference_cache.db`.
-- `api-service` bergantung pada `mlflow-server` (`depends_on` dengan `service_healthy`), sehingga MLflow siap terlebih dahulu sebelum API mulai.
+### Mengubah Jumlah Replika Secara Dinamis
+
+```bash
+# Tambah replika menjadi 5 (tanpa ubah file compose)
+docker compose up -d --scale model-serving=5
+
+# Cek replika yang berjalan
+docker compose ps
+
+# Kembalikan ke 3 replika
+docker compose up -d --scale model-serving=3
+```
+
+### Stack Lama (LK-09)
+
+Stack `api-service` (FastAPI cache) dipindah ke `docker-compose.lk09.yaml` dan dijalankan terpisah bila diperlukan:
+
+```bash
+docker compose -f docker-compose.lk09.yaml up -d
+```
+
+### Deprecated
+
+- **mlflow-server (Tracking Server + Registry UI, port 5000)** — dihapus dari `docker-compose.yaml` pada LK-10. Replika serving memakai model yang sudah bundel di dalam image dan tidak memerlukan tracking server saat runtime. Bila perlu menjalankan registry (mis. untuk registrasi atau verifikasi model), jalankan manual:
+
+```bash
+mlflow server \
+  --host 0.0.0.0 \
+  --port 5000 \
+  --backend-store-uri sqlite:///mlflow.db \
+  --artifacts-destination ./mlruns \
+  --serve-artifacts \
+  --allowed-hosts "*"
+```
 

@@ -1,0 +1,28 @@
+{
+  "dataframe_records": [
+    {
+      "pm25": 7.2,
+      "relativehumidity": 62.0,
+      "temperature": 26.8,
+      "hour_sin": -0.5,
+      "hour_cos": -0.8660254037844388,
+      "velocity_now": -1.6,
+      "velocity_1h": -9.7,
+      "pm25_rolling_std_6h": 9.15707376840441,
+      "pm25_lag_1": 8.8,
+      "pm25_lag_2": 18.5,
+      "pm25_lag_3": 20.4,
+      "pm25_lag_6": 27.2,
+      "pm25_lag_12": 31.9,
+      "pm25_lag_24": 50.3,
+      "pm25_mean_3h": 11.5,
+      "pm25_mean_6h": 17.8,
+      "pm25_mean_12h": 20.0,
+      "pm25_mean_24h": 34.12083333333333,
+      "pm25_max_6h": 32.5,
+      "pm25_max_24h": 70.3,
+      "pm25_min_24h": 5.2,
+      "pm25_anom_6h": -10.6
+    }
+  ]
+}
