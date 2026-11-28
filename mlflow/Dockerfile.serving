@@ -4,3 +4,7 @@ FROM python:3.14-slim
 WORKDIR /opt/ml
 COPY --from=model /opt/ml/model /opt/ml/model
 RUN pip install --no-cache-dir -r /opt/ml/model/requirements.txt
+RUN pip install --no-cache-dir prometheus-client==0.20.0 httpx==0.27.2
+COPY mlflow/serve_with_metrics.py /opt/ml/serve_with_metrics.py
+EXPOSE 8080
+CMD ["python", "/opt/ml/serve_with_metrics.py"]

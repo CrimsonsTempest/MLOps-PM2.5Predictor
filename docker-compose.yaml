@@ -8,9 +8,15 @@ services:
       replicas: 3
     expose:
       - "8080"
-    command: ["mlflow", "models", "serve", "--model-uri", "/opt/ml/model", "--host", "0.0.0.0", "--port", "8080", "--env-manager", "local"]
+    command: ["python", "/opt/ml/serve_with_metrics.py"]
     networks:
       - pm25-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   serving-proxy:
     image: nginx:alpine
@@ -23,6 +29,54 @@ services:
     depends_on:
       - model-serving
 
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.4.0
+    command: ["-nginx.scrape-uri", "http://serving-proxy:8080/stub_status"]
+    expose:
+      - "9113"
+    networks:
+      - pm25-net
+    depends_on:
+      - serving-proxy
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - pm25-net
+    depends_on:
+      - model-serving
+      - nginx-exporter
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - pm25-net
+    depends_on:
+      - prometheus
+
 networks:
   pm25-net:
     driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:

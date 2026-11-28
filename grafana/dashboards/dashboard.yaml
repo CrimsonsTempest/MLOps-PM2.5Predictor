@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'PM2.5 Dashboards'
+    orgId: 1
+    folder: 'PM2.5 Monitoring'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
